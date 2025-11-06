@@ -1,10 +1,11 @@
+
 import axios from 'axios';
 // Use the centralized auth helper so token key stays consistent
-import { getToken } from './auth';
+import { getToken, removeToken } from './auth';
 
 // Defina a URL base da sua API
 // (Use seu IP local para testes no celular, não 'localhost')
-const API_URL = 'http://192.168.0.2:8087/api'; 
+const API_URL = 'http://192.168.0.4:8087/api'; 
 
 const api = axios.create({
   baseURL: API_URL,
@@ -32,5 +33,24 @@ api.interceptors.request.use(async (config: any) => {
 
   return config;
 }, (error: any) => Promise.reject(error));
+
+// Interceptor de resposta: Captura erros 401/403 e faz logout silencioso
+api.interceptors.response.use(
+  (response) => response,
+  async (error) => {
+    // Se for erro de autenticação (401 Unauthorized ou 403 Forbidden)
+    // E NÃO for um erro do endpoint de login
+    const isAuthError = error?.response?.status === 401 || error?.response?.status === 403;
+    const isLoginEndpoint = error?.config?.url?.includes('/auth/login');
+    
+    if (isAuthError && !isLoginEndpoint) {
+      console.warn('🔒 Token inválido ou expirado. Fazendo logout...');
+      await removeToken();
+      // Nota: Não redireciona aqui - deixa o AuthContext detectar a falta de token
+    }
+    
+    return Promise.reject(error);
+  }
+);
 
 export default api;

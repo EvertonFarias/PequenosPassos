@@ -167,10 +167,10 @@ export default function LoginScreen() {
                </View>
              </View>
            </Animated.View>
- 
-           <Text style={styles.greeting}>Bem-vindo de volta!</Text>
-           
-           <Text style={styles.subtitle}>Faça login para continuar</Text>
+
+           <Text style={styles.greeting}>Olá, Educador!</Text>
+
+           <Text style={styles.subtitle}>Registre o desenvolvimento das crianças</Text>
  
            {/* Decorative Dots */}
            <View style={styles.dotsContainer}>
@@ -295,13 +295,7 @@ export default function LoginScreen() {
          </View>
  
          {/* Footer */}
-         <View style={styles.footer}>
-           <View style={styles.footerLoveRow}>
-             <Text style={styles.footerLove}>Feito com</Text>
-             <Ionicons name="heart" size={12} color="#A78BFA" />
-             <Text style={styles.footerLove}>para educadores</Text>
-           </View>
-         </View>
+
          {/* --- Fim do seu Design --- */}
       </View>
     </KeyboardAvoidingView>

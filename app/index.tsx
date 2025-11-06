@@ -1,12 +1,30 @@
 import { useEffect } from 'react';
 import { useRouter } from 'expo-router';
+import { useAuth } from '../context/AuthContext';
+import { ActivityIndicator, View } from 'react-native';
 
-// Simple redirect so the app opens to the login screen as the initial route
+// Initial route - let AuthContext decide where to go
 export default function Index() {
   const router = useRouter();
+  const { user, isLoading } = useAuth();
+
   useEffect(() => {
-    // Replace root with /login
-    router.replace('/login');
-  }, [router]);
-  return null;
+    if (isLoading) return; // Wait for auth to load
+
+    if (!user) {
+      // Not authenticated - go to login
+      router.replace('/login');
+    } else {
+      // Authenticated - AuthContext will handle navigation
+      // Just navigate to (app) group and let it redirect properly
+      router.replace('/(app)/school-selection' as any);
+    }
+  }, [user, isLoading, router]);
+
+  // Show loading while checking auth
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' }}>
+      <ActivityIndicator size="large" color="#8B5CF6" />
+    </View>
+  );
 }

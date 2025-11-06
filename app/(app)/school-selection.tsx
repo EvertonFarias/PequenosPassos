@@ -1,7 +1,8 @@
 import { useRouter } from 'expo-router';
-import { ArrowRight, Building2, GraduationCap, MapPin, Phone, Users, BookOpen } from 'lucide-react-native';
-import React from 'react';
+import { ArrowRight, Building2, GraduationCap, MapPin, Phone, Users, BookOpen, RefreshCw } from 'lucide-react-native';
+import React, { useEffect } from 'react';
 import {
+    ActivityIndicator,
     FlatList,
     SafeAreaView,
     StatusBar,
@@ -14,17 +15,25 @@ import { useAuth } from '../../context/AuthContext';
 import { AppHeader } from '@/components/AppHeader';
 
 export default function SchoolSelectionScreen() {
-  const { schools, user } = useAuth();
+  const { schools, user, isLoadingSchools, refreshUser } = useAuth();
   const router = useRouter();
+
+  // Se schools estiver vazio mas não estiver carregando, tenta recarregar
+  useEffect(() => {
+    if (!isLoadingSchools && schools.length === 0 && user?.role === 'USER') {
+      console.log('🔄 Schools vazias, recarregando dados do usuário...');
+      refreshUser();
+    }
+  }, [schools.length, isLoadingSchools, user?.role]);
 
   const onSelectSchool = (school: any) => {
     router.push({
       pathname: '/(app)/class-selection',
-      params: { 
-        schoolId: school.schoolId, 
-        schoolName: school.schoolName 
+      params: {
+        schoolId: String(school.schoolId),
+        schoolName: String(school.schoolName),
       },
-    });
+    } as any);
   };
 
   const getRoleLabel = () => {
@@ -166,23 +175,45 @@ export default function SchoolSelectionScreen() {
         </Text>
       </View>
 
-      {/* Lista de escolas */}
-      <FlatList
-        data={schools}
-        renderItem={renderSchoolCard}
-        keyExtractor={(item: any, index) => String(item?.schoolId ?? index)}
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Building2 size={64} color="#D1D5DB" />
-            <Text style={styles.emptyTitle}>Nenhuma escola encontrada</Text>
-            <Text style={styles.emptySubtitle}>
-              Você ainda não está vinculado a nenhuma escola.
-            </Text>
-          </View>
-        }
-      />
+      {/* Loading State */}
+      {isLoadingSchools ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#8B5CF6" />
+          <Text style={styles.loadingText}>Carregando escolas...</Text>
+        </View>
+      ) : (
+        /* Lista de escolas */
+        <FlatList
+          data={schools}
+          renderItem={renderSchoolCard}
+          keyExtractor={(item: any, index) => String(item?.schoolId ?? index)}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View style={styles.emptyContainer}>
+              <Building2 size={64} color="#D1D5DB" />
+              <Text style={styles.emptyTitle}>Nenhuma escola encontrada</Text>
+              <Text style={styles.emptySubtitle}>
+                Você ainda não está vinculado a nenhuma escola.
+              </Text>
+              <TouchableOpacity 
+                style={styles.refreshButton} 
+                onPress={refreshUser}
+                disabled={isLoadingSchools}
+              >
+                {isLoadingSchools ? (
+                  <ActivityIndicator size="small" color="#8B5CF6" />
+                ) : (
+                  <>
+                    <RefreshCw size={18} color="#8B5CF6" />
+                    <Text style={styles.refreshButtonText}>Tentar Novamente</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          }
+        />
+      )}
     </SafeAreaView>
   );
 }
@@ -221,6 +252,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     textAlign: 'center',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 60,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6B7280',
+    fontWeight: '500',
   },
   listContainer: {
     paddingHorizontal: 16,
@@ -363,5 +406,22 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
     lineHeight: 20,
+    marginBottom: 24,
+  },
+  refreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#F3E8FF',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8,
+    minWidth: 160,
+    justifyContent: 'center',
+  },
+  refreshButtonText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#8B5CF6',
   },
 });
