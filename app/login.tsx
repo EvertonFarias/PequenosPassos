@@ -1,6 +1,6 @@
 // app/login.tsx
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ActivityIndicator,
   Animated,
@@ -11,7 +11,9 @@ import {
   TextInput,
   TouchableOpacity,
   View,
+  ScrollView,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 // import api from './lib/api'; // Não precisamos mais disto aqui
 import { useAuth } from '../context/AuthContext'; // <- NOSSO NOVO HOOK
 
@@ -24,7 +26,47 @@ export default function LoginScreen() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [isLoadingCredentials, setIsLoadingCredentials] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // --- Carregar credenciais salvas ao montar o componente ---
+  useEffect(() => {
+    loadSavedCredentials();
+  }, []);
+
+  const loadSavedCredentials = async () => {
+    try {
+      const savedEmail = await AsyncStorage.getItem('@saved_email');
+      const savedPassword = await AsyncStorage.getItem('@saved_password');
+      const savedRememberMe = await AsyncStorage.getItem('@remember_me');
+
+      if (savedRememberMe === 'true' && savedEmail && savedPassword) {
+        setEmail(savedEmail);
+        setPassword(savedPassword);
+        setRememberMe(true);
+      }
+    } catch (error) {
+      console.error('Erro ao carregar credenciais salvas:', error);
+    } finally {
+      setIsLoadingCredentials(false);
+    }
+  };
+
+  const saveCredentials = async (email: string, password: string, remember: boolean) => {
+    try {
+      if (remember) {
+        await AsyncStorage.setItem('@saved_email', email);
+        await AsyncStorage.setItem('@saved_password', password);
+        await AsyncStorage.setItem('@remember_me', 'true');
+      } else {
+        await AsyncStorage.removeItem('@saved_email');
+        await AsyncStorage.removeItem('@saved_password');
+        await AsyncStorage.removeItem('@remember_me');
+      }
+    } catch (error) {
+      console.error('Erro ao salvar credenciais:', error);
+    }
+  };
 
   // --- Suas Animações (mantidas 100%) ---
   const [floatingAnim] = useState(new Animated.Value(0));
@@ -97,6 +139,9 @@ export default function LoginScreen() {
       // A tela não sabe de nada, ela só chama.
       await signIn(email, password);
 
+      // Salvar ou remover credenciais baseado no "Lembrar de mim"
+      await saveCredentials(email, password, rememberMe);
+
       // O redirecionamento será tratado pelo AuthContext
       // Não precisamos mais do 'router.replace' aqui.
 
@@ -108,11 +153,29 @@ export default function LoginScreen() {
     }
   }
 
+  // Mostrar loading enquanto carrega as credenciais salvas
+  if (isLoadingCredentials) {
+    return (
+      <View style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color="#8B5CF6" />
+        <Text style={{ marginTop: 16, color: '#6B7280', fontSize: 14 }}>
+          Carregando...
+        </Text>
+      </View>
+    );
+  }
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      <ScrollView 
+        style={styles.container}
+        contentContainerStyle={{ flexGrow: 1 }}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
       <View style={styles.content}>
         {/* --- Seu Design (mantido 100%) --- */}
         {/* Decorative Background Elements */}
@@ -258,14 +321,21 @@ export default function LoginScreen() {
            <View style={styles.optionsRow}>
              <TouchableOpacity
                style={styles.rememberMe}
-               onPress={() => setRememberMe(!rememberMe)}
+               onPress={async () => {
+                 const newValue = !rememberMe;
+                 setRememberMe(newValue);
+                 // Se desmarcar, limpar credenciais salvas imediatamente
+                 if (!newValue) {
+                   await saveCredentials('', '', false);
+                 }
+               }}
              >
                <View style={[styles.checkbox, rememberMe && styles.checkboxChecked]}>
                  {rememberMe && (
                    <Ionicons name="checkmark" size={14} color="#FFFFFF" />
                  )}
                </View>
-               <Text style={styles.rememberText}>Lembrar-me</Text>
+               <Text style={styles.rememberText}>Lembrar de mim</Text>
              </TouchableOpacity>
  
              <TouchableOpacity style={styles.forgotButton}>
@@ -298,6 +368,7 @@ export default function LoginScreen() {
 
          {/* --- Fim do seu Design --- */}
       </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }

@@ -2,6 +2,7 @@
 import api from '@/lib/api';
 import { useRouter, useSegments } from 'expo-router';
 import { saveToken, getToken, removeToken } from '@/lib/auth';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
 
@@ -150,14 +151,16 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.log('📍 API Base URL:', api.defaults.baseURL);
       console.log('👤 Login:', login);
       
-      const response = await api.post<{ token: string }>('/auth/login', { login, password });
+      const response = await api.post<{ token: string; refreshToken: string }>('/auth/login', { login, password });
       console.log('✅ Resposta recebida:', response.status);
       console.log('🔑 Token recebido:', response.data.token ? 'SIM' : 'NÃO');
+      console.log('🔄 Refresh Token recebido:', response.data.refreshToken ? 'SIM' : 'NÃO');
       
-      const { token } = response.data;
+      const { token, refreshToken } = response.data;
 
       await saveToken(token);
-      console.log('💾 Token salvo via saveToken()');
+      await AsyncStorage.setItem('@refresh_token', refreshToken);
+      console.log('💾 Access Token e Refresh Token salvos!');
       
       // Buscar dados do usuário
       console.log('📡 Buscando dados do usuário...');
@@ -208,6 +211,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setUser(null);
     setSchools([]);
     await removeToken();
+    await AsyncStorage.removeItem('@refresh_token');
     router.replace('/');
   };
 

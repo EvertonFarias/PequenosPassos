@@ -7,12 +7,22 @@ import {
   SafeAreaView,
   StatusBar,
   Dimensions,
+  TouchableOpacity,
+  Alert,
 } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useLocalSearchParams, router } from 'expo-router';
 import { AppHeader } from '../../components/AppHeader';
-import { BarChart3, TrendingUp, Award, TrendingDown, Minus } from 'lucide-react-native';
+import { BarChart3, TrendingUp, Award, TrendingDown, Minus, Download } from 'lucide-react-native';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
+
+// Função para formatar data no padrão brasileiro
+const formatDateBR = (dateString: string) => {
+  const [year, month, day] = dateString.split('-');
+  return `${day}/${month}/${year}`;
+};
 
 // Componente de Gráfico de Barras Horizontal
 const HorizontalBarChart = ({ data, maxValue }: { data: { label: string; value: number; color: string }[]; maxValue: number }) => {
@@ -198,15 +208,17 @@ const ProgressIndicator = ({ value, label }: { value: number; label: string }) =
          <TrendingDown size={20} color="#FFFFFF" />}
       </View>
       <View style={chartStyles.progressContent}>
-        <Text style={chartStyles.progressLabel}>{label}</Text>
-        <Text style={[
-          chartStyles.progressValue,
-          isPositive ? chartStyles.progressValuePositive :
-          isNeutral ? chartStyles.progressValueNeutral :
-          chartStyles.progressValueNegative
-        ]}>
-          {isPositive ? '+' : ''}{value.toFixed(1)}%
-        </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 8 }}>
+          <Text style={[
+            chartStyles.progressValue,
+            isPositive ? chartStyles.progressValuePositive :
+            isNeutral ? chartStyles.progressValueNeutral :
+            chartStyles.progressValueNegative
+          ]}>
+            {isPositive ? '+' : ''}{value.toFixed(1)}%
+          </Text>
+          <Text style={chartStyles.progressLabel}>{label}</Text>
+        </View>
       </View>
     </View>
   );
@@ -217,6 +229,476 @@ export default function ReportViewScreen() {
 
   const data = reportData ? JSON.parse(Array.isArray(reportData) ? reportData[0] : reportData) : null;
   const type = Array.isArray(reportType) ? reportType[0] : reportType;
+
+  const generatePDF = async () => {
+    try {
+      const reportTitle = type === 'STUDENT' 
+        ? `Relatório Individual - ${data.studentName}`
+        : type === 'CLASSROOM'
+        ? `Relatório da Turma - ${data.classroomName}`
+        : 'Relatório de Comparação entre Turmas';
+
+      // Gerar gráficos de evolução temporal em SVG
+      const generateEvolutionChart = (evolutionData: any[], metricLabel: string) => {
+        if (!evolutionData || evolutionData.length === 0) return '';
+        
+        const width = 500;
+        const height = 200;
+        const padding = 40;
+        const chartWidth = width - padding * 2;
+        const chartHeight = height - padding * 2;
+        
+        const maxValue = 5;
+        const minValue = 0;
+        const pointSpacing = chartWidth / (evolutionData.length - 1);
+        
+        const points = evolutionData.map((point, index) => {
+          const x = padding + index * pointSpacing;
+          const y = padding + chartHeight - ((point.value - minValue) / (maxValue - minValue)) * chartHeight;
+          return { x, y, value: point.value, date: point.date };
+        });
+        
+        const pathData = points.map((p, i) => 
+          i === 0 ? `M ${p.x} ${p.y}` : `L ${p.x} ${p.y}`
+        ).join(' ');
+        
+        return `
+          <div style="margin: 20px 0;">
+            <div style="font-weight: 600; margin-bottom: 10px;">${metricLabel}</div>
+            <svg width="${width}" height="${height}" style="background: #F9FAFB; border-radius: 8px;">
+              <!-- Grid lines -->
+              ${[0, 1, 2, 3, 4, 5].map(i => {
+                const y = padding + chartHeight - (i / 5) * chartHeight;
+                return `
+                  <line x1="${padding}" y1="${y}" x2="${width - padding}" y2="${y}" 
+                        stroke="#E5E7EB" stroke-width="1"/>
+                  <text x="${padding - 10}" y="${y + 5}" fill="#6B7280" font-size="12" text-anchor="end">${i}</text>
+                `;
+              }).join('')}
+              
+              <!-- Line -->
+              <path d="${pathData}" fill="none" stroke="#8B5CF6" stroke-width="3"/>
+              
+              <!-- Points -->
+              ${points.map(p => `
+                <circle cx="${p.x}" cy="${p.y}" r="5" fill="#8B5CF6"/>
+                <text x="${p.x}" y="${p.y - 15}" fill="#8B5CF6" font-size="12" font-weight="600" text-anchor="middle">
+                  ${p.value.toFixed(1)}
+                </text>
+              `).join('')}
+              
+              <!-- Dates -->
+              ${points.map((p, i) => {
+                const date = new Date(p.date);
+                const dateStr = date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+                return `
+                  <text x="${p.x}" y="${height - 10}" fill="#6B7280" font-size="10" text-anchor="middle">
+                    ${dateStr}
+                  </text>
+                `;
+              }).join('')}
+            </svg>
+          </div>
+        `;
+      };
+
+      const html = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <style>
+            body {
+              font-family: 'Segoe UI', Arial, sans-serif;
+              padding: 20px;
+              color: #1F2937;
+            }
+            h1 {
+              color: #8B5CF6;
+              font-size: 24px;
+              margin-bottom: 20px;
+              border-bottom: 2px solid #8B5CF6;
+              padding-bottom: 10px;
+            }
+            .info-section {
+              background: #F9FAFB;
+              padding: 15px;
+              border-radius: 8px;
+              margin-bottom: 20px;
+            }
+            .info-row {
+              margin: 8px 0;
+              display: flex;
+            }
+            .label {
+              font-weight: 600;
+              color: #6B7280;
+              width: 100px;
+            }
+            .value {
+              color: #1F2937;
+            }
+            .stats-grid {
+              display: grid;
+              grid-template-columns: repeat(3, 1fr);
+              gap: 15px;
+              margin: 20px 0;
+            }
+            .stat-box {
+              background: #F9FAFB;
+              padding: 15px;
+              border-radius: 8px;
+              text-align: center;
+            }
+            .stat-value {
+              font-size: 24px;
+              font-weight: 700;
+              color: #8B5CF6;
+              margin-bottom: 5px;
+            }
+            .stat-label {
+              font-size: 12px;
+              color: #6B7280;
+            }
+            .metric-section {
+              margin: 20px 0;
+            }
+            .metric-card {
+              background: #F9FAFB;
+              padding: 15px;
+              border-radius: 8px;
+              margin-bottom: 15px;
+            }
+            .metric-name {
+              font-size: 16px;
+              font-weight: 600;
+              color: #1F2937;
+              margin-bottom: 10px;
+            }
+            .metric-stats {
+              display: flex;
+              gap: 20px;
+            }
+            .metric-stat-item {
+              flex: 1;
+            }
+            .metric-stat-label {
+              font-size: 11px;
+              color: #6B7280;
+              margin-bottom: 4px;
+            }
+            .metric-stat-value {
+              font-size: 14px;
+              font-weight: 600;
+              color: #8B5CF6;
+            }
+            .section-title {
+              font-size: 18px;
+              font-weight: 600;
+              color: #1F2937;
+              margin: 20px 0 10px 0;
+              display: flex;
+              align-items: center;
+              gap: 8px;
+            }
+            .positive { color: #059669; }
+            .negative { color: #DC2626; }
+            
+            /* Gráfico de Barras Horizontal */
+            .bar-chart {
+              margin: 15px 0;
+            }
+            .bar-row {
+              display: flex;
+              align-items: center;
+              margin: 8px 0;
+              gap: 10px;
+            }
+            .bar-label {
+              width: 120px;
+              font-size: 12px;
+              color: #6B7280;
+              font-weight: 500;
+            }
+            .bar-track {
+              flex: 1;
+              height: 32px;
+              background: #F3F4F6;
+              border-radius: 6px;
+              overflow: hidden;
+              position: relative;
+            }
+            .bar-fill {
+              height: 100%;
+              border-radius: 6px;
+              display: flex;
+              align-items: center;
+              justify-content: flex-end;
+              padding-right: 8px;
+              color: white;
+              font-weight: 600;
+              font-size: 12px;
+            }
+            .bar-value {
+              width: 45px;
+              text-align: right;
+              font-weight: 600;
+              color: #1F2937;
+              font-size: 12px;
+            }
+            
+            /* Indicador de Progresso */
+            .progress-indicator {
+              background: #F9FAFB;
+              padding: 12px;
+              border-radius: 8px;
+              display: flex;
+              align-items: center;
+              gap: 12px;
+              margin: 15px 0;
+            }
+            .progress-icon {
+              width: 40px;
+              height: 40px;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-size: 20px;
+              font-weight: 700;
+              color: white;
+            }
+            .progress-icon.positive { background: #059669; }
+            .progress-icon.negative { background: #DC2626; }
+            .progress-icon.neutral { background: #6B7280; }
+            .progress-content {
+              flex: 1;
+            }
+            .progress-value {
+              font-size: 20px;
+              font-weight: 700;
+            }
+            .progress-label {
+              font-size: 13px;
+              color: #6B7280;
+              margin-left: 8px;
+            }
+          </style>
+        </head>
+        <body>
+          <h1>${reportTitle}</h1>
+          
+          <div class="info-section">
+            ${type === 'STUDENT' ? `
+              <div class="info-row">
+                <span class="label">Aluno:</span>
+                <span class="value">${data.studentName}</span>
+              </div>
+              <div class="info-row">
+                <span class="label">Turma:</span>
+                <span class="value">${data.classroomName}</span>
+              </div>
+            ` : type === 'CLASSROOM' ? `
+              <div class="info-row">
+                <span class="label">Turma:</span>
+                <span class="value">${data.classroomName}</span>
+              </div>
+            ` : ''}
+            <div class="info-row">
+              <span class="label">Período:</span>
+              <span class="value">${formatDateBR(data.startDate)} até ${formatDateBR(data.endDate)}</span>
+            </div>
+          </div>
+
+          <div class="section-title">Estatísticas Gerais</div>
+          <div class="stats-grid">
+            <div class="stat-box">
+              <div class="stat-value">${type === 'CLASSROOM' ? data.totalStudents : data.totalAssessments}</div>
+              <div class="stat-label">${type === 'CLASSROOM' ? 'Alunos' : 'Avaliações'}</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-value">${data.overallAverage?.toFixed(2) || 'N/A'}</div>
+              <div class="stat-label">Média Geral</div>
+            </div>
+            <div class="stat-box">
+              <div class="stat-value ${(data.overallProgress || 0) >= 0 ? 'positive' : 'negative'}">
+                ${data.overallProgress >= 0 ? '+' : ''}${data.overallProgress?.toFixed(1) || '0'}%
+              </div>
+              <div class="stat-label">Progresso</div>
+            </div>
+          </div>
+
+          ${data.overallProgress !== undefined && data.overallProgress !== null ? `
+            <div class="progress-indicator">
+              <div class="progress-icon ${data.overallProgress > 0 ? 'positive' : data.overallProgress < 0 ? 'negative' : 'neutral'}">
+                ${data.overallProgress > 0 ? '↑' : data.overallProgress < 0 ? '↓' : '−'}
+              </div>
+              <div class="progress-content">
+                <span class="progress-value ${data.overallProgress >= 0 ? 'positive' : 'negative'}">
+                  ${data.overallProgress >= 0 ? '+' : ''}${data.overallProgress.toFixed(1)}%
+                </span>
+                <span class="progress-label">Progresso Geral no Período</span>
+              </div>
+            </div>
+          ` : ''}
+
+          ${data.metrics && data.metrics.length > 0 ? `
+            <div class="section-title">📊 Desempenho por Métrica</div>
+            <div class="bar-chart">
+              ${data.metrics.map((metric: any) => {
+                const average = metric.average || 0;
+                const percentage = (average / 5) * 100;
+                const color = average >= 4 ? '#059669' : average >= 3 ? '#F59E0B' : '#EF4444';
+                return `
+                  <div class="bar-row">
+                    <div class="bar-label">${metric.metricLabel}</div>
+                    <div class="bar-track">
+                      <div class="bar-fill" style="width: ${percentage}%; background-color: ${color};">
+                        ${average >= 1 ? average.toFixed(1) : ''}
+                      </div>
+                    </div>
+                    <div class="bar-value">${average.toFixed(1)}</div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : ''}
+
+          ${data.metrics && data.metrics.some((m: any) => m.evolutionData && m.evolutionData.length > 0) ? `
+            <div class="section-title">📈 Evolução Temporal</div>
+            ${data.metrics.filter((m: any) => m.evolutionData && m.evolutionData.length > 0)
+              .map((metric: any) => generateEvolutionChart(metric.evolutionData, metric.metricLabel))
+              .join('')}
+          ` : ''}
+
+          ${data.metrics && data.metrics.length > 0 ? `
+            <div class="section-title">📋 Detalhes das Métricas</div>
+            <div class="metric-section">
+              ${data.metrics.map((metric: any) => `
+                <div class="metric-card">
+                  <div class="metric-name">${metric.metricLabel}</div>
+                  <div class="metric-stats">
+                    <div class="metric-stat-item">
+                      <div class="metric-stat-label">Média</div>
+                      <div class="metric-stat-value">${metric.average?.toFixed(2)}</div>
+                    </div>
+                    <div class="metric-stat-item">
+                      <div class="metric-stat-label">Mín</div>
+                      <div class="metric-stat-value">${metric.minimum}</div>
+                    </div>
+                    <div class="metric-stat-item">
+                      <div class="metric-stat-label">Máx</div>
+                      <div class="metric-stat-value">${metric.maximum}</div>
+                    </div>
+                    <div class="metric-stat-item">
+                      <div class="metric-stat-label">Avaliações</div>
+                      <div class="metric-stat-value">${metric.totalAssessments}</div>
+                    </div>
+                    ${metric.progressPercentage !== undefined && metric.progressPercentage !== null ? `
+                      <div class="metric-stat-item">
+                        <div class="metric-stat-label">Evolução</div>
+                        <div class="metric-stat-value ${metric.progressPercentage >= 0 ? 'positive' : 'negative'}">
+                          ${metric.progressPercentage >= 0 ? '↑' : '↓'} ${metric.progressPercentage >= 0 ? '+' : ''}${metric.progressPercentage.toFixed(1)}%
+                        </div>
+                      </div>
+                    ` : ''}
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+
+          ${type === 'CLASSROOM' && data.studentRanking && data.studentRanking.length > 0 ? `
+            <div class="section-title">🏆 Ranking de Alunos</div>
+            <div class="bar-chart">
+              ${data.studentRanking.map((student: any, index: number) => {
+                const average = student.average || 0;
+                const percentage = (average / 5) * 100;
+                const color = index === 0 ? '#D97706' : index === 1 ? '#A8A29E' : index === 2 ? '#CD7F32' : '#8B5CF6';
+                return `
+                  <div class="bar-row">
+                    <div class="bar-label" style="display: flex; align-items: center; gap: 5px;">
+                      <span style="color: ${color}; font-weight: 700;">${student.position}º</span>
+                      <span style="font-size: 11px;">${student.studentName}</span>
+                    </div>
+                    <div class="bar-track">
+                      <div class="bar-fill" style="width: ${percentage}%; background-color: ${color};">
+                        ${average >= 1 ? average.toFixed(1) : ''}
+                      </div>
+                    </div>
+                    <div class="bar-value">${average.toFixed(2)}</div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          ` : ''}
+
+          ${type === 'CLASSROOM_COMPARISON' && data.classrooms && data.classrooms.length > 0 ? `
+            <div class="section-title">📊 Comparação de Médias entre Turmas</div>
+            <div class="bar-chart">
+              ${data.classrooms.map((classroom: any, index: number) => {
+                const average = classroom.average || 0;
+                const percentage = (average / 5) * 100;
+                const colors = ['#8B5CF6', '#059669', '#F59E0B', '#EF4444', '#3B82F6'];
+                const color = colors[index % colors.length];
+                return `
+                  <div class="bar-row">
+                    <div class="bar-label">${classroom.classroomName}</div>
+                    <div class="bar-track">
+                      <div class="bar-fill" style="width: ${percentage}%; background-color: ${color};">
+                        ${average >= 1 ? average.toFixed(1) : ''}
+                      </div>
+                    </div>
+                    <div class="bar-value">${average.toFixed(2)}</div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+            
+            <div class="section-title">📋 Detalhes por Turma</div>
+            <div class="metric-section">
+              ${data.classrooms.map((classroom: any, index: number) => `
+                <div class="metric-card">
+                  <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                    <span style="font-weight: 700; color: ${['#8B5CF6', '#059669', '#F59E0B'][index % 3]}; font-size: 18px;">
+                      ${index + 1}º
+                    </span>
+                    <span style="font-weight: 600;">${classroom.classroomName}</span>
+                  </div>
+                  <div class="metric-stats">
+                    <div class="metric-stat-item">
+                      <div class="metric-stat-label">Média</div>
+                      <div class="metric-stat-value">${classroom.average?.toFixed(2)}</div>
+                    </div>
+                    <div class="metric-stat-item">
+                      <div class="metric-stat-label">Alunos</div>
+                      <div class="metric-stat-value">${classroom.totalStudents}</div>
+                    </div>
+                    <div class="metric-stat-item">
+                      <div class="metric-stat-label">Avaliações</div>
+                      <div class="metric-stat-value">${classroom.totalAssessments}</div>
+                    </div>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          ` : ''}
+        </body>
+        </html>
+      `;
+
+      const { uri } = await Print.printToFileAsync({ html });
+      await Sharing.shareAsync(uri, { 
+        UTI: '.pdf', 
+        mimeType: 'application/pdf',
+        dialogTitle: 'Compartilhar Relatório PDF'
+      });
+      
+    } catch (error) {
+      console.error('Erro ao gerar PDF:', error);
+      Alert.alert('Erro', 'Não foi possível gerar o PDF do relatório.');
+    }
+  };
 
   if (!data) {
     return (
@@ -251,7 +733,7 @@ export default function ReportViewScreen() {
           
           <View style={styles.infoRow}>
             <Text style={styles.label}>Período:</Text>
-            <Text style={styles.value}>{data.startDate} até {data.endDate}</Text>
+            <Text style={styles.value}>{formatDateBR(data.startDate)} até {formatDateBR(data.endDate)}</Text>
           </View>
         </View>
 
@@ -263,20 +745,24 @@ export default function ReportViewScreen() {
           
           <View style={styles.statsGrid}>
             <View style={styles.statBox}>
-              <Text style={styles.statValue}>{data.totalAssessments}</Text>
+              <Text style={styles.statValue} numberOfLines={1}>{data.totalAssessments}</Text>
               <Text style={styles.statLabel}>Avaliações</Text>
             </View>
             
             <View style={styles.statBox}>
-              <Text style={styles.statValue}>{data.overallAverage?.toFixed(2) || 'N/A'}</Text>
+              <Text style={styles.statValue} numberOfLines={1}>{data.overallAverage?.toFixed(2) || 'N/A'}</Text>
               <Text style={styles.statLabel}>Média Geral</Text>
             </View>
             
             <View style={styles.statBox}>
-              <Text style={[
-                styles.statValue,
-                { color: (data.overallProgress || 0) >= 0 ? '#059669' : '#DC2626' }
-              ]}>
+              <Text 
+                style={[
+                  styles.statValue,
+                  { color: (data.overallProgress || 0) >= 0 ? '#059669' : '#DC2626' }
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
                 {data.overallProgress >= 0 ? '+' : ''}{data.overallProgress?.toFixed(1) || '0'}%
               </Text>
               <Text style={styles.statLabel}>Progresso</Text>
@@ -399,7 +885,7 @@ export default function ReportViewScreen() {
           
           <View style={styles.infoRow}>
             <Text style={styles.label}>Período:</Text>
-            <Text style={styles.value}>{data.startDate} até {data.endDate}</Text>
+            <Text style={styles.value}>{formatDateBR(data.startDate)} até {formatDateBR(data.endDate)}</Text>
           </View>
         </View>
 
@@ -478,6 +964,92 @@ export default function ReportViewScreen() {
             ))}
           </View>
         )}
+
+        {/* Gráfico de Barras - Comparação de Métricas da Turma */}
+        {data.metrics && data.metrics.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <BarChart3 size={24} color="#8B5CF6" />
+              <Text style={styles.cardTitle}>Desempenho por Métrica da Turma</Text>
+            </View>
+            
+            <HorizontalBarChart 
+              data={data.metrics.map((m: any) => ({
+                label: m.metricLabel,
+                value: m.average || 0,
+                color: m.average >= 4 ? '#059669' : m.average >= 3 ? '#F59E0B' : '#EF4444'
+              }))}
+              maxValue={5}
+            />
+          </View>
+        )}
+
+        {/* Gráficos de Evolução Temporal por Métrica da Turma */}
+        {data.metrics && data.metrics.length > 0 && data.metrics.some((m: any) => m.evolutionData && m.evolutionData.length > 0) && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <TrendingUp size={24} color="#059669" />
+              <Text style={styles.cardTitle}>Evolução Temporal da Turma</Text>
+            </View>
+            
+            {data.metrics.map((metric: any, index: number) => {
+              if (!metric.evolutionData || metric.evolutionData.length === 0) return null;
+              
+              return (
+                <LineChart
+                  key={index}
+                  data={metric.evolutionData.map((d: any) => ({
+                    date: d.date,
+                    value: d.value
+                  }))}
+                  label={metric.metricLabel}
+                />
+              );
+            })}
+          </View>
+        )}
+
+        {/* Detalhes das Métricas da Turma */}
+        {data.metrics && data.metrics.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Award size={24} color="#D97706" />
+              <Text style={styles.cardTitle}>Detalhes das Métricas da Turma</Text>
+            </View>
+            
+            {data.metrics.map((metric: any, index: number) => (
+              <View key={index} style={styles.metricCard}>
+                <Text style={styles.metricName}>{metric.metricLabel}</Text>
+                <View style={styles.metricStats}>
+                  <View style={styles.metricStatItem}>
+                    <Text style={styles.metricStatLabel}>Média</Text>
+                    <Text style={styles.metricStatValue}>{metric.average?.toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.metricStatItem}>
+                    <Text style={styles.metricStatLabel}>Mín</Text>
+                    <Text style={styles.metricStatValue}>{metric.minimum}</Text>
+                  </View>
+                  <View style={styles.metricStatItem}>
+                    <Text style={styles.metricStatLabel}>Máx</Text>
+                    <Text style={styles.metricStatValue}>{metric.maximum}</Text>
+                  </View>
+                  <View style={styles.metricStatItem}>
+                    <Text style={styles.metricStatLabel}>Avaliações</Text>
+                    <Text style={styles.metricStatValue}>{metric.totalAssessments}</Text>
+                  </View>
+                </View>
+                {metric.progressPercentage !== undefined && metric.progressPercentage !== null && (
+                  <View style={{ marginTop: 12 }}>
+                    <ProgressIndicator 
+                      value={metric.progressPercentage} 
+                      label="Evolução da Turma"
+                    />
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
       </View>
     );
   };
@@ -493,7 +1065,7 @@ export default function ReportViewScreen() {
           
           <View style={styles.infoRow}>
             <Text style={styles.label}>Período:</Text>
-            <Text style={styles.value}>{data.startDate} até {data.endDate}</Text>
+            <Text style={styles.value}>{formatDateBR(data.startDate)} até {formatDateBR(data.endDate)}</Text>
           </View>
         </View>
 
@@ -557,6 +1129,92 @@ export default function ReportViewScreen() {
             ))}
           </View>
         )}
+
+        {/* Gráfico de Barras - Comparação de Métricas Geral */}
+        {data.metricsComparison && data.metricsComparison.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <BarChart3 size={24} color="#8B5CF6" />
+              <Text style={styles.cardTitle}>Desempenho por Métrica (Geral)</Text>
+            </View>
+            
+            <HorizontalBarChart 
+              data={data.metricsComparison.map((m: any) => ({
+                label: m.metricLabel,
+                value: m.average || 0,
+                color: m.average >= 4 ? '#059669' : m.average >= 3 ? '#F59E0B' : '#EF4444'
+              }))}
+              maxValue={5}
+            />
+          </View>
+        )}
+
+        {/* Gráficos de Evolução Temporal por Métrica (Geral) */}
+        {data.metricsComparison && data.metricsComparison.length > 0 && data.metricsComparison.some((m: any) => m.evolutionData && m.evolutionData.length > 0) && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <TrendingUp size={24} color="#059669" />
+              <Text style={styles.cardTitle}>Evolução Temporal (Geral)</Text>
+            </View>
+            
+            {data.metricsComparison.map((metric: any, index: number) => {
+              if (!metric.evolutionData || metric.evolutionData.length === 0) return null;
+              
+              return (
+                <LineChart
+                  key={index}
+                  data={metric.evolutionData.map((d: any) => ({
+                    date: d.date,
+                    value: d.value
+                  }))}
+                  label={metric.metricLabel}
+                />
+              );
+            })}
+          </View>
+        )}
+
+        {/* Detalhes das Métricas (Geral) */}
+        {data.metricsComparison && data.metricsComparison.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Award size={24} color="#D97706" />
+              <Text style={styles.cardTitle}>Detalhes das Métricas (Geral)</Text>
+            </View>
+            
+            {data.metricsComparison.map((metric: any, index: number) => (
+              <View key={index} style={styles.metricCard}>
+                <Text style={styles.metricName}>{metric.metricLabel}</Text>
+                <View style={styles.metricStats}>
+                  <View style={styles.metricStatItem}>
+                    <Text style={styles.metricStatLabel}>Média</Text>
+                    <Text style={styles.metricStatValue}>{metric.average?.toFixed(2)}</Text>
+                  </View>
+                  <View style={styles.metricStatItem}>
+                    <Text style={styles.metricStatLabel}>Mín</Text>
+                    <Text style={styles.metricStatValue}>{metric.minimum}</Text>
+                  </View>
+                  <View style={styles.metricStatItem}>
+                    <Text style={styles.metricStatLabel}>Máx</Text>
+                    <Text style={styles.metricStatValue}>{metric.maximum}</Text>
+                  </View>
+                  <View style={styles.metricStatItem}>
+                    <Text style={styles.metricStatLabel}>Avaliações</Text>
+                    <Text style={styles.metricStatValue}>{metric.totalAssessments}</Text>
+                  </View>
+                </View>
+                {metric.progressPercentage !== undefined && metric.progressPercentage !== null && (
+                  <View style={{ marginTop: 12 }}>
+                    <ProgressIndicator 
+                      value={metric.progressPercentage} 
+                      label="Evolução Geral"
+                    />
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
       </View>
     );
   };
@@ -565,6 +1223,14 @@ export default function ReportViewScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
       <AppHeader title="Visualizar Relatório" showBack />
+      
+      {/* Botão para gerar PDF */}
+      <View style={styles.pdfButtonContainer}>
+        <TouchableOpacity style={styles.pdfButton} onPress={generatePDF}>
+          <Download size={20} color="#FFFFFF" />
+          <Text style={styles.pdfButtonText}>Exportar PDF</Text>
+        </TouchableOpacity>
+      </View>
       
       <ScrollView showsVerticalScrollIndicator={false}>
         {type === 'STUDENT' && renderStudentReport()}
@@ -653,15 +1319,18 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 90,
   },
   statValue: {
-    fontSize: 24,
+    fontSize: 20,
     fontWeight: '700',
     color: '#8B5CF6',
     marginBottom: 4,
+    textAlign: 'center',
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: 11,
     color: '#6B7280',
     textAlign: 'center',
   },
@@ -769,6 +1438,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     color: '#1F2937',
+  },
+  pdfButtonContainer: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: '#FFFFFF',
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  pdfButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#8B5CF6',
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    gap: 8,
+  },
+  pdfButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 
