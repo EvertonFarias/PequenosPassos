@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,19 +11,21 @@ import {
   Alert,
   Modal,
   ScrollView,
+  RefreshControl,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { AppHeader } from '../../components/AppHeader';
 import { 
   User, 
   ClipboardList,
   Calendar,
-  TrendingUp,
   Settings as SettingsIcon,
   X,
   Plus,
   Minus,
   CheckCircle2,
+  CheckCircle,
+  Clock,
 } from 'lucide-react-native';
 import api from '../../lib/api';
 import { useToast } from '../../hooks/useToast';
@@ -35,6 +37,7 @@ interface StudentDTO {
   guardianName?: string;
   guardianPhone?: string;
   photoUrl?: string;
+  assessedToday?: boolean;
 }
 
 interface MetricDefinition {
@@ -45,6 +48,22 @@ interface MetricDefinition {
   minValue: number;
   maxValue: number;
   active: boolean;
+}
+
+interface AssessmentHistoryResponse {
+  content: Array<{
+    id: number;
+    date: string;
+    observation?: string;
+    metrics: Array<{
+      metricDefinitionId: number;
+      metricLabel: string;
+      score: number;
+    }>;
+  }>;
+  totalElements: number;
+  totalPages: number;
+  number: number;
 }
 
 export default function ClassroomDetailScreen() {
@@ -60,42 +79,82 @@ export default function ClassroomDetailScreen() {
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [isAddingMetric, setIsAddingMetric] = useState<number | null>(null);
   const [isRemovingMetric, setIsRemovingMetric] = useState<number | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const parsedClassroomId = Array.isArray(classroomId) ? Number(classroomId[0]) : Number(classroomId);
   const displayName = Array.isArray(classroomName) ? classroomName[0] : classroomName;
 
-  // Carrega alunos e métricas da turma
-  useEffect(() => {
+  // Função para carregar dados da turma (reutilizável)
+  const fetchClassroomData = useCallback(async (showLoading = true) => {
     if (!parsedClassroomId || !Number.isFinite(parsedClassroomId)) {
       setError('ID da turma inválido.');
       setIsLoading(false);
       return;
     }
 
-    const fetchClassroomData = async () => {
-      try {
+    try {
+      if (showLoading) {
         setIsLoading(true);
-        setError(null);
+      }
+      setError(null);
 
-        const [studentsResponse, metricsResponse] = await Promise.all([
-          api.get<StudentDTO[]>(`/classrooms/${parsedClassroomId}/students`),
-          api.get<MetricDefinition[]>(`/classrooms/${parsedClassroomId}/metrics`),
-        ]);
+      const [studentsResponse, metricsResponse] = await Promise.all([
+        api.get<StudentDTO[]>(`/classrooms/${parsedClassroomId}/students`),
+        api.get<MetricDefinition[]>(`/classrooms/${parsedClassroomId}/metrics`),
+      ]);
 
-        setStudents(studentsResponse.data ?? []);
-        setMetrics(metricsResponse.data ?? []);
-      } catch (e: any) {
-        console.error('Falha ao carregar dados da turma:', e);
-        setError('Falha ao carregar dados da turma.');
-      } finally {
+      const studentsList = studentsResponse.data ?? [];
+
+      // Busca status de avaliação de cada aluno
+      const studentsWithStatus = await Promise.all(
+        studentsList.map(async (student) => {
+          try {
+            const statusResponse = await api.get<{ assessed: boolean }>(`/students/${student.id}/assessment-status`);
+            return {
+              ...student,
+              assessedToday: statusResponse.data.assessed,
+            };
+          } catch (err) {
+            return {
+              ...student,
+              assessedToday: false,
+            };
+          }
+        })
+      );
+
+      setStudents(studentsWithStatus);
+      setMetrics(metricsResponse.data ?? []);
+    } catch (e: any) {
+      console.log('Falha ao carregar dados da turma:', e);
+      setError('Falha ao carregar dados da turma.');
+    } finally {
+      if (showLoading) {
         setIsLoading(false);
       }
-    };
-
-    fetchClassroomData();
+      setRefreshing(false);
+    }
   }, [parsedClassroomId]);
 
-  const handleEvaluateStudent = (student: StudentDTO) => {
+  // Carrega dados na montagem
+  useEffect(() => {
+    fetchClassroomData();
+  }, [fetchClassroomData]);
+
+  // Recarrega dados ao voltar para a tela
+  useFocusEffect(
+    useCallback(() => {
+      fetchClassroomData(false);
+    }, [fetchClassroomData])
+  );
+
+  // Pull-to-refresh
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    fetchClassroomData(false);
+  }, [fetchClassroomData]);
+
+  const handleEvaluateStudent = async (student: StudentDTO) => {
     if (metrics.length === 0) {
       Alert.alert(
         'Sem Métricas',
@@ -105,6 +164,50 @@ export default function ClassroomDetailScreen() {
       return;
     }
 
+    // Se já foi avaliado hoje, buscar a avaliação para editar
+    if (student.assessedToday) {
+      try {
+        // Formata data local (não UTC) para evitar problemas de timezone
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const today = `${year}-${month}-${day}`;
+        
+        const response = await api.get<AssessmentHistoryResponse>(`/assessments/history`, {
+          params: {
+            studentId: student.id,
+            date: today,
+            page: 0,
+            size: 1,
+          },
+        });
+
+        if (response.data?.content && response.data.content.length > 0) {
+          const todayAssessment = response.data.content[0];
+          
+          // Navegar para edição
+          router.push({
+            pathname: '/(app)/student-evaluation' as any,
+            params: {
+              studentId: student.id,
+              studentName: student.name,
+              classroomId: parsedClassroomId,
+              classroomName: displayName,
+              assessmentId: todayAssessment.id,
+              mode: 'edit',
+            },
+          });
+          return;
+        }
+      } catch (e) {
+        console.log('Erro ao buscar avaliação do dia:', e);
+        toast.showToast('Erro ao carregar avaliação', 'error');
+        return;
+      }
+    }
+
+    // Se não foi avaliado, criar nova avaliação
     router.push({
       pathname: '/(app)/student-evaluation' as any,
       params: {
@@ -129,9 +232,9 @@ export default function ClassroomDetailScreen() {
       setAvailableMetrics(response.data ?? []);
       setIsModalVisible(true);
     } catch (e: any) {
-      console.error('❌ Erro ao buscar métricas disponíveis:', e);
-      console.error('Status:', e.response?.status);
-      console.error('Data:', e.response?.data);
+      console.log('❌ Erro ao buscar métricas disponíveis:', e);
+      console.log('Status:', e.response?.status);
+      console.log('Data:', e.response?.data);
       toast.showToast('Não foi possível carregar as métricas disponíveis', 'error');
     }
   };
@@ -145,18 +248,20 @@ export default function ClassroomDetailScreen() {
         metricDefinitionId: metricId
       });
       
-      // Atualizar as listas
-      const addedMetric = availableMetrics.find(m => m.id === metricId);
-      if (addedMetric) {
-        setMetrics([...metrics, addedMetric]);
-        setAvailableMetrics(availableMetrics.filter(m => m.id !== metricId));
-      }
+      // Recarregar as listas do backend para garantir dados atualizados
+      const [metricsResponse, availableResponse] = await Promise.all([
+        api.get<MetricDefinition[]>(`/classrooms/${parsedClassroomId}/metrics`),
+        api.get<MetricDefinition[]>(`/classrooms/${parsedClassroomId}/metrics/available`),
+      ]);
+      
+      setMetrics(metricsResponse.data ?? []);
+      setAvailableMetrics(availableResponse.data ?? []);
       
       toast.showToast('Métrica adicionada com sucesso!', 'success');
     } catch (e: any) {
-      console.error('❌ Erro ao adicionar métrica:', e);
-      console.error('Status:', e.response?.status);
-      console.error('Data:', e.response?.data);
+      console.log('❌ Erro ao adicionar métrica:', e);
+      console.log('Status:', e.response?.status);
+      console.log('Data:', e.response?.data);
       const errorMessage = e.response?.data?.message || 'Falha ao adicionar métrica';
       toast.showToast(errorMessage, 'error');
     } finally {
@@ -171,34 +276,25 @@ export default function ClassroomDetailScreen() {
       
       await api.delete(`/classrooms/${parsedClassroomId}/metrics/${metricId}`);
       
-      // Atualizar as listas
-      const removedMetric = metrics.find(m => m.id === metricId);
-      if (removedMetric) {
-        setMetrics(metrics.filter(m => m.id !== metricId));
-        setAvailableMetrics([...availableMetrics, removedMetric]);
-      }
+      // Recarregar as listas do backend para garantir dados atualizados (filtra apenas ativas)
+      const [metricsResponse, availableResponse] = await Promise.all([
+        api.get<MetricDefinition[]>(`/classrooms/${parsedClassroomId}/metrics`),
+        api.get<MetricDefinition[]>(`/classrooms/${parsedClassroomId}/metrics/available`),
+      ]);
+      
+      setMetrics(metricsResponse.data ?? []);
+      setAvailableMetrics(availableResponse.data ?? []);
       
       toast.showToast('Métrica removida com sucesso!', 'success');
     } catch (e: any) {
-      console.error('❌ Erro ao remover métrica:', e);
-      console.error('Status:', e.response?.status);
-      console.error('Data:', e.response?.data);
+      console.log('❌ Erro ao remover métrica:', e);
+      console.log('Status:', e.response?.status);
+      console.log('Data:', e.response?.data);
       const errorMessage = e.response?.data?.message || 'Falha ao remover métrica';
       toast.showToast(errorMessage, 'error');
     } finally {
       setIsRemovingMetric(null);
     }
-  };
-
-  const handleViewHistory = (student: StudentDTO) => {
-    router.push({
-      pathname: '/(app)/student-history' as any,
-      params: {
-        studentId: student.id,
-        studentName: student.name,
-        classroomId: parsedClassroomId,
-      },
-    });
   };
 
   const getInitials = (name: string) => {
@@ -231,25 +327,34 @@ export default function ClassroomDetailScreen() {
           </View>
           <View style={styles.studentDetails}>
             <Text style={styles.studentName}>{item.name}</Text>
-            {item.guardianName && (
-              <Text style={styles.guardianName}>Responsável: {item.guardianName}</Text>
-            )}
+            <View style={styles.statusContainer}>
+              {item.assessedToday ? (
+                <>
+                  <CheckCircle size={14} color="#10B981" />
+                  <Text style={styles.statusTextAssessed}>Avaliado Hoje</Text>
+                </>
+              ) : (
+                <>
+                  <Clock size={14} color="#F59E0B" />
+                  <Text style={styles.statusTextPending}>Aguardando Avaliação</Text>
+                </>
+              )}
+            </View>
           </View>
         </View>
 
         <View style={styles.studentActions}>
           <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: '#EFF6FF' }]}
-            onPress={() => handleViewHistory(item)}
-          >
-            <TrendingUp size={18} color="#2563EB" />
-          </TouchableOpacity>
-          
-          <TouchableOpacity
-            style={[styles.actionButton, { backgroundColor: '#F0FDF4' }]}
+            style={[
+              styles.actionButton, 
+              { backgroundColor: item.assessedToday ? '#DCFCE7' : '#FEF3C7' }
+            ]}
             onPress={() => handleEvaluateStudent(item)}
           >
-            <ClipboardList size={18} color="#16A34A" />
+            <ClipboardList 
+              size={18} 
+              color={item.assessedToday ? '#16A34A' : '#D97706'} 
+            />
           </TouchableOpacity>
         </View>
       </View>
@@ -341,6 +446,14 @@ export default function ClassroomDetailScreen() {
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={renderHeader}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              colors={['#2563EB']}
+              tintColor="#2563EB"
+            />
+          }
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <User size={64} color="#D1D5DB" />
@@ -651,7 +764,22 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1F2937',
-    marginBottom: 2,
+    marginBottom: 4,
+  },
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  statusTextAssessed: {
+    fontSize: 13,
+    color: '#10B981',
+    fontWeight: '600',
+  },
+  statusTextPending: {
+    fontSize: 13,
+    color: '#F59E0B',
+    fontWeight: '600',
   },
   guardianName: {
     fontSize: 13,

@@ -52,8 +52,6 @@ export default function SchoolMetricsScreen() {
 
   // Form states
   const [formLabel, setFormLabel] = useState('');
-  const [formMinValue, setFormMinValue] = useState('1');
-  const [formMaxValue, setFormMaxValue] = useState('5');
 
   const parsedSchoolId = Array.isArray(schoolId) ? Number(schoolId[0]) : Number(schoolId);
   const displaySchoolName = Array.isArray(schoolName) ? schoolName[0] : schoolName;
@@ -90,16 +88,12 @@ export default function SchoolMetricsScreen() {
   const openCreateModal = () => {
     setEditingMetric(null);
     setFormLabel('');
-    setFormMinValue('1');
-    setFormMaxValue('5');
     setIsModalVisible(true);
   };
 
   const openEditModal = (metric: MetricDefinition) => {
     setEditingMetric(metric);
     setFormLabel(metric.label);
-    setFormMinValue(String(metric.minValue));
-    setFormMaxValue(String(metric.maxValue));
     setIsModalVisible(true);
   };
 
@@ -107,8 +101,6 @@ export default function SchoolMetricsScreen() {
     setIsModalVisible(false);
     setEditingMetric(null);
     setFormLabel('');
-    setFormMinValue('1');
-    setFormMaxValue('5');
   };
 
   const validateForm = (): boolean => {
@@ -116,20 +108,6 @@ export default function SchoolMetricsScreen() {
       toast.showToast('O rótulo da métrica é obrigatório', 'error');
       return false;
     }
-
-    const min = parseInt(formMinValue);
-    const max = parseInt(formMaxValue);
-
-    if (isNaN(min) || isNaN(max)) {
-      toast.showToast('Valores mínimo e máximo devem ser números', 'error');
-      return false;
-    }
-
-    if (min >= max) {
-      toast.showToast('Valor mínimo deve ser menor que o valor máximo', 'error');
-      return false;
-    }
-
     return true;
   };
 
@@ -139,25 +117,18 @@ export default function SchoolMetricsScreen() {
     try {
       setIsSaving(true);
 
-      const min = parseInt(formMinValue);
-      const max = parseInt(formMaxValue);
-
       if (editingMetric) {
-        // Update
+        // Update - minValue e maxValue sempre são 1-5 (não configuráveis)
         const payload = {
           label: formLabel.trim(),
-          minValue: min,
-          maxValue: max,
         };
         await api.put(`/schools/${parsedSchoolId}/metrics/${editingMetric.id}`, payload);
         toast.showToast('Métrica atualizada com sucesso!', 'success');
       } else {
-        // Create
+        // Create - minValue e maxValue sempre são 1-5 (não configuráveis)
         const payload = {
           name: formLabel.trim().toLowerCase().replace(/\s+/g, '_'),
           label: formLabel.trim(),
-          minValue: min,
-          maxValue: max,
         };
         await api.post(`/schools/${parsedSchoolId}/metrics`, payload);
         toast.showToast('Métrica criada com sucesso!', 'success');
@@ -404,30 +375,10 @@ export default function SchoolMetricsScreen() {
                 />
               </View>
 
-              <View style={styles.formRow}>
-                <View style={[styles.formGroup, { flex: 1 }]}>
-                  <Text style={styles.formLabel}>Valor Mínimo *</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="1"
-                    placeholderTextColor="#9CA3AF"
-                    value={formMinValue}
-                    onChangeText={setFormMinValue}
-                    keyboardType="number-pad"
-                  />
-                </View>
-
-                <View style={[styles.formGroup, { flex: 1 }]}>
-                  <Text style={styles.formLabel}>Valor Máximo *</Text>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="5"
-                    placeholderTextColor="#9CA3AF"
-                    value={formMaxValue}
-                    onChangeText={setFormMaxValue}
-                    keyboardType="number-pad"
-                  />
-                </View>
+              <View style={styles.infoBox}>
+                <Text style={styles.infoText}>
+                  Todas as métricas usam escala de 1 a 5 (fixa)
+                </Text>
               </View>
 
               <TouchableOpacity
@@ -722,5 +673,17 @@ const styles = StyleSheet.create({
   },
   tabTextActive: {
     color: '#FFFFFF',
+  },
+  infoBox: {
+    backgroundColor: '#EFF6FF',
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 8,
+    padding: 12,
+  },
+  infoText: {
+    fontSize: 13,
+    color: '#1E40AF',
+    lineHeight: 18,
   },
 });

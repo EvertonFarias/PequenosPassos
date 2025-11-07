@@ -36,38 +36,69 @@ interface MetricValue {
 export default function StudentEvaluationScreen() {
   const router = useRouter();
   const toast = useToast();
-  const { studentId, studentName, classroomId, classroomName } = useLocalSearchParams();
+  const { studentId, studentName, classroomId, classroomName, assessmentId, mode } = useLocalSearchParams();
 
   const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
   const [metricValues, setMetricValues] = useState<Record<number, number>>({});
   const [observation, setObservation] = useState('');
+  const [originalDate, setOriginalDate] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const parsedStudentId = Array.isArray(studentId) ? Number(studentId[0]) : Number(studentId);
   const parsedClassroomId = Array.isArray(classroomId) ? Number(classroomId[0]) : Number(classroomId);
+  const parsedAssessmentId = assessmentId ? (Array.isArray(assessmentId) ? Number(assessmentId[0]) : Number(assessmentId)) : null;
+  const isEditMode = mode === 'edit' && parsedAssessmentId !== null;
   const displayStudentName = Array.isArray(studentName) ? studentName[0] : studentName;
   const displayClassroomName = Array.isArray(classroomName) ? classroomName[0] : classroomName;
 
-  // Carrega métricas ativas da turma
+  // Carrega métricas ativas da turma e dados da avaliação (se modo edição)
   useEffect(() => {
-    const fetchMetrics = async () => {
+    const fetchData = async () => {
       try {
         setIsLoading(true);
         setError(null);
-        const response = await api.get<MetricDefinition[]>(`/classrooms/${parsedClassroomId}/metrics`);
-        setMetrics(response.data ?? []);
+        
+        if (isEditMode && parsedAssessmentId) {
+          // MODO EDIÇÃO: Carrega dados da avaliação existente
+          const assessmentResponse = await api.get<any>(`/assessments/${parsedAssessmentId}`);
+          const assessment = assessmentResponse.data;
+
+          // Salva a data original da avaliação
+          setOriginalDate(assessment.date);
+
+          // Usa as métricas DA AVALIAÇÃO, não as métricas atuais da turma
+          // Isso garante que se uma métrica foi removida/desativada, ainda pode ser editada
+          const assessmentMetrics: MetricDefinition[] = assessment.metrics.map((m: any) => ({
+            id: m.metricDefinitionId,
+            name: m.name || '',
+            label: m.label,
+          }));
+          setMetrics(assessmentMetrics);
+
+          // Preenche os valores das métricas
+          const values: Record<number, number> = {};
+          assessment.metrics.forEach((metric: any) => {
+            values[metric.metricDefinitionId] = metric.value;
+          });
+          setMetricValues(values);
+          setObservation(assessment.observation || '');
+        } else {
+          // MODO CRIAÇÃO: Carrega métricas atuais da turma
+          const metricsResponse = await api.get<MetricDefinition[]>(`/classrooms/${parsedClassroomId}/metrics`);
+          setMetrics(metricsResponse.data ?? []);
+        }
       } catch (e: any) {
-        console.error('Falha ao carregar métricas:', e);
-        setError('Falha ao carregar métricas da turma.');
+        console.error('Falha ao carregar dados:', e);
+        setError(isEditMode ? 'Falha ao carregar avaliação.' : 'Falha ao carregar métricas da turma.');
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchMetrics();
-  }, [parsedClassroomId]);
+    fetchData();
+  }, [parsedClassroomId, isEditMode, parsedAssessmentId]);
 
   const handleMetricChange = (metricId: number, value: number) => {
     setMetricValues(prev => ({
@@ -99,17 +130,32 @@ export default function StudentEvaluationScreen() {
         value: metricValues[metric.id],
       }));
 
+      // Formata data local (não UTC) para evitar problemas de timezone
+      const getLocalDateString = () => {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+      };
+
       const payload = {
         studentId: parsedStudentId,
         classroomId: parsedClassroomId,
-        date: new Date().toISOString().split('T')[0], // formato YYYY-MM-DD
+        date: isEditMode && originalDate ? originalDate : getLocalDateString(),
         metrics: metricsPayload,
         observation: observation.trim() || null,
       };
 
-      await api.post('/assessments', payload);
-
-      toast.showToast('Avaliação salva com sucesso!', 'success');
+      if (isEditMode && parsedAssessmentId) {
+        // Atualiza avaliação existente
+        await api.put(`/assessments/${parsedAssessmentId}`, payload);
+        toast.showToast('Avaliação atualizada com sucesso!', 'success');
+      } else {
+        // Cria nova avaliação
+        await api.post('/assessments', payload);
+        toast.showToast('Avaliação salva com sucesso!', 'success');
+      }
       
       // Volta para a tela anterior
       setTimeout(() => {
@@ -185,7 +231,7 @@ export default function StudentEvaluationScreen() {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
         <AppHeader 
-          title="Avaliar Aluno" 
+          title={isEditMode ? "Editar Avaliação" : "Avaliar Aluno"} 
           showBack 
         />
         <View style={styles.loadingContainer}>
@@ -201,7 +247,7 @@ export default function StudentEvaluationScreen() {
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
         <AppHeader 
-          title="Avaliar Aluno" 
+          title={isEditMode ? "Editar Avaliação" : "Avaliar Aluno"} 
           showBack 
         />
         <View style={styles.errorContainer}>
@@ -217,7 +263,7 @@ export default function StudentEvaluationScreen() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
       <AppHeader 
-        title="Avaliar Aluno" 
+        title={isEditMode ? "Editar Avaliação" : "Avaliar Aluno"} 
         showBack 
       />
 

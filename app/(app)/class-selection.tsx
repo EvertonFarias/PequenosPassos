@@ -20,7 +20,8 @@ import {
   BarChart3,
   ClipboardList,
   UserPlus,
-  GraduationCap
+  GraduationCap,
+  History
 } from 'lucide-react-native';
 import api from '../../lib/api';
 
@@ -111,9 +112,25 @@ export default function ClassSelectionScreen() {
     console.log('Gerenciar professores');
   };
 
+  const handleViewHistory = () => {
+    if (parsedSchoolId === null) return;
+    router.push({
+      pathname: '/(app)/assessment-history' as any,
+      params: {
+        schoolId: parsedSchoolId,
+      },
+    });
+  };
+
   const handleViewReports = () => {
-    // TODO: Implementar relatórios
-    console.log('Relatórios');
+    if (parsedSchoolId === null) return;
+    router.push({
+      pathname: '/(app)/reports' as any,
+      params: {
+        schoolId: parsedSchoolId,
+        schoolName: schoolName || 'Escola',
+      },
+    });
   };
 
   const handleManageMetrics = () => {
@@ -273,6 +290,16 @@ export default function ClassSelectionScreen() {
 
             <TouchableOpacity 
               style={styles.actionCard}
+              onPress={handleViewHistory}
+            >
+              <View style={[styles.actionIconContainer, { backgroundColor: '#FEE2E2' }]}>
+                <History size={20} color="#DC2626" />
+              </View>
+              <Text style={styles.actionTitle}>Histórico de Avaliações</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={styles.actionCard}
               onPress={handleViewReports}
             >
               <View style={[styles.actionIconContainer, { backgroundColor: '#D1FAE5' }]}>
@@ -286,22 +313,34 @@ export default function ClassSelectionScreen() {
 
       {/* Actions Row - Professor (simplificado) */}
       {isTeacher && (
-        <View style={styles.teacherActionsRow}>
-          <TouchableOpacity 
-            style={styles.teacherActionButton}
-            onPress={handleViewReports}
-          >
-            <BarChart3 size={20} color="#FFFFFF" />
-            <Text style={styles.teacherActionText}>Relatórios</Text>
-          </TouchableOpacity>
+        <View style={styles.teacherActionsSection}>
+          <View style={styles.teacherActionsRow}>
+            <TouchableOpacity 
+              style={styles.teacherActionButton}
+              onPress={handleViewHistory}
+            >
+              <History size={20} color="#FFFFFF" />
+              <Text style={styles.teacherActionText}>Histórico de Avaliações</Text>
+            </TouchableOpacity>
+          </View>
 
-          <TouchableOpacity 
-            style={[styles.teacherActionButton, { backgroundColor: '#7C3AED' }]}
-            onPress={handleManageMetrics}
-          >
-            <ClipboardList size={20} color="#FFFFFF" />
-            <Text style={styles.teacherActionText}>Métricas</Text>
-          </TouchableOpacity>
+          <View style={styles.teacherActionsRow}>
+            <TouchableOpacity 
+              style={[styles.teacherActionButton, { backgroundColor: '#059669' }]}
+              onPress={handleViewReports}
+            >
+              <BarChart3 size={20} color="#FFFFFF" />
+              <Text style={styles.teacherActionText}>Relatórios</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity 
+              style={[styles.teacherActionButton, { backgroundColor: '#7C3AED' }]}
+              onPress={handleManageMetrics}
+            >
+              <ClipboardList size={20} color="#FFFFFF" />
+              <Text style={styles.teacherActionText}>Métricas</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       )}
 
@@ -518,18 +557,21 @@ const styles = StyleSheet.create({
     color: '#1F2937',
     textAlign: 'center',
   },
+  teacherActionsSection: {
+    paddingHorizontal: 16,
+    marginBottom: 20,
+    gap: 12,
+  },
   teacherActionsRow: {
     flexDirection: 'row',
     gap: 12,
-    paddingHorizontal: 16,
-    marginBottom: 20,
   },
   teacherActionButton: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#059669',
+    backgroundColor: '#DC2626',
     borderRadius: 12,
     paddingVertical: 14,
     gap: 8,

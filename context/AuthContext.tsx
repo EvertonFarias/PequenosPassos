@@ -208,7 +208,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     setUser(null);
     setSchools([]);
     await removeToken();
-    router.replace('/login');
+    router.replace('/');
   };
 
   return (
