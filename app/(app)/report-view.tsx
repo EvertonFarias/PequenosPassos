@@ -236,6 +236,8 @@ export default function ReportViewScreen() {
         ? `Relatório Individual - ${data.studentName}`
         : type === 'CLASSROOM'
         ? `Relatório da Turma - ${data.classroomName}`
+        : type === 'STUDENT_CLASSROOM_COMPARISON'
+        ? `Comparação do Aluno ${data.studentName} em Turmas`
         : 'Relatório de Comparação entre Turmas';
 
       // Gerar gráficos de evolução temporal em SVG
@@ -1219,6 +1221,158 @@ export default function ReportViewScreen() {
     );
   };
 
+  const renderStudentClassroomComparisonReport = () => {
+    return (
+      <View style={styles.content}>
+        <View style={styles.card}>
+          <View style={styles.cardHeader}>
+            <BarChart3 size={24} color="#8B5CF6" />
+            <Text style={styles.cardTitle}>Comparação do Aluno em Turmas</Text>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Aluno:</Text>
+            <Text style={styles.value}>{data.studentName}</Text>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Período:</Text>
+            <Text style={styles.value}>{formatDateBR(data.startDate)} até {formatDateBR(data.endDate)}</Text>
+          </View>
+          
+          <View style={styles.infoRow}>
+            <Text style={styles.label}>Turmas Comparadas:</Text>
+            <Text style={styles.value}>{data.classroomPerformances?.length || 0}</Text>
+          </View>
+        </View>
+
+        {/* Comparação das Turmas */}
+        {data.classroomPerformances && data.classroomPerformances.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <TrendingUp size={24} color="#059669" />
+              <Text style={styles.cardTitle}>Desempenho por Turma</Text>
+            </View>
+            
+            {data.classroomPerformances.map((performance: any, index: number) => (
+              <View key={index} style={styles.comparisonItem}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                  <View style={[
+                    styles.rankingPosition,
+                    { backgroundColor: ['#8B5CF6', '#059669', '#F59E0B'][index % 3] }
+                  ]}>
+                    <Text style={[styles.rankingPositionText, { color: '#FFFFFF' }]}>{index + 1}</Text>
+                  </View>
+                  <Text style={[styles.comparisonName, { flex: 1, marginLeft: 12, marginBottom: 0 }]}>
+                    {performance.classroomName}
+                  </Text>
+                </View>
+                <View style={styles.comparisonStats}>
+                  <View style={styles.comparisonStatItem}>
+                    <Text style={styles.comparisonStatLabel}>Média</Text>
+                    <Text style={[styles.comparisonStatValue, { color: '#8B5CF6' }]}>
+                      {performance.overallAverage?.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View style={styles.comparisonStatItem}>
+                    <Text style={styles.comparisonStatLabel}>Avaliações</Text>
+                    <Text style={styles.comparisonStatValue}>{performance.totalAssessments}</Text>
+                  </View>
+                  <View style={styles.comparisonStatItem}>
+                    <Text style={styles.comparisonStatLabel}>Progresso</Text>
+                    <Text style={[
+                      styles.comparisonStatValue,
+                      { color: (performance.overallProgress || 0) >= 0 ? '#059669' : '#DC2626' }
+                    ]}>
+                      {performance.overallProgress >= 0 ? '+' : ''}{performance.overallProgress?.toFixed(1) || '0'}%
+                    </Text>
+                  </View>
+                </View>
+                
+                {/* Gráfico de Barras - Métricas da Turma */}
+                {performance.metrics && performance.metrics.length > 0 && (
+                  <View style={{ marginTop: 16 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151', marginBottom: 12 }}>
+                      Desempenho por Métrica
+                    </Text>
+                    <HorizontalBarChart 
+                      data={performance.metrics.map((m: any) => ({
+                        label: m.metricLabel,
+                        value: m.average || 0,
+                        color: m.average >= 4 ? '#059669' : m.average >= 3 ? '#F59E0B' : '#EF4444'
+                      }))}
+                      maxValue={5}
+                    />
+                  </View>
+                )}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Comparação de Métricas Entre Turmas */}
+        {data.classroomPerformances && data.classroomPerformances.length > 0 && 
+         data.classroomPerformances[0].metrics && data.classroomPerformances[0].metrics.length > 0 && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <BarChart3 size={24} color="#8B5CF6" />
+              <Text style={styles.cardTitle}>Comparação por Métrica</Text>
+            </View>
+            
+            {data.classroomPerformances[0].metrics.map((metric: any, metricIndex: number) => (
+              <View key={metricIndex} style={styles.metricCard}>
+                <Text style={styles.metricName}>{metric.metricLabel}</Text>
+                <View style={{ marginTop: 12 }}>
+                  {data.classroomPerformances.map((performance: any, perfIndex: number) => {
+                    const perfMetric = performance.metrics[metricIndex];
+                    if (!perfMetric) return null;
+                    
+                    return (
+                      <View key={perfIndex} style={{ marginBottom: 12 }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                          <Text style={{ fontSize: 13, fontWeight: '600', color: '#6B7280' }}>
+                            {performance.classroomName}
+                          </Text>
+                          <Text style={{ fontSize: 13, fontWeight: '700', color: '#8B5CF6' }}>
+                            Média: {perfMetric.average?.toFixed(2)}
+                          </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                          <View style={{ flex: 1, backgroundColor: '#F9FAFB', padding: 8, borderRadius: 6 }}>
+                            <Text style={{ fontSize: 10, color: '#6B7280' }}>Mín</Text>
+                            <Text style={{ fontSize: 12, fontWeight: '600', color: '#1F2937' }}>
+                              {perfMetric.minimum}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1, backgroundColor: '#F9FAFB', padding: 8, borderRadius: 6 }}>
+                            <Text style={{ fontSize: 10, color: '#6B7280' }}>Máx</Text>
+                            <Text style={{ fontSize: 12, fontWeight: '600', color: '#1F2937' }}>
+                              {perfMetric.maximum}
+                            </Text>
+                          </View>
+                          <View style={{ flex: 1, backgroundColor: '#F9FAFB', padding: 8, borderRadius: 6 }}>
+                            <Text style={{ fontSize: 10, color: '#6B7280' }}>Progresso</Text>
+                            <Text style={{ 
+                              fontSize: 12, 
+                              fontWeight: '600', 
+                              color: (perfMetric.progressPercentage || 0) >= 0 ? '#059669' : '#DC2626'
+                            }}>
+                              {perfMetric.progressPercentage >= 0 ? '+' : ''}{perfMetric.progressPercentage?.toFixed(1) || '0'}%
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#F9FAFB" />
@@ -1236,6 +1390,7 @@ export default function ReportViewScreen() {
         {type === 'STUDENT' && renderStudentReport()}
         {type === 'CLASSROOM' && renderClassroomReport()}
         {type === 'CLASSROOM_COMPARISON' && renderComparisonReport()}
+        {type === 'STUDENT_CLASSROOM_COMPARISON' && renderStudentClassroomComparisonReport()}
       </ScrollView>
     </SafeAreaView>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,10 @@ import {
   SafeAreaView,
   StatusBar,
   ActivityIndicator,
+  Alert,
+  Modal,
 } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
 import { AppHeader } from '../../components/AppHeader';
 import { 
@@ -21,7 +23,11 @@ import {
   ClipboardList,
   UserPlus,
   GraduationCap,
-  History
+  History,
+  Edit3,
+  Archive,
+  ArchiveRestore,
+  MoreVertical,
 } from 'lucide-react-native';
 import api from '../../lib/api';
 
@@ -30,6 +36,7 @@ interface ClassroomDTO {
   name: string;
   description: string;
   studentCount: number;
+  active?: boolean;
 }
 
 export default function ClassSelectionScreen() {
@@ -51,6 +58,8 @@ export default function ClassSelectionScreen() {
   const [classes, setClasses] = useState<ClassroomDTO[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showMenuForClass, setShowMenuForClass] = useState<number | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Determina a role do usuário na escola
   const schoolRole = useMemo(() => {
@@ -62,49 +71,131 @@ export default function ClassSelectionScreen() {
   const isManager = schoolRole === 'SCHOOL_MANAGER';
   const isTeacher = schoolRole === 'TEACHER';
 
-  // Carrega as turmas
-  useEffect(() => {
+  // Função para carregar turmas
+  const fetchClassrooms = useCallback(async () => {
     if (parsedSchoolId === null) {
       setError('ID da escola não fornecido.');
       setIsLoading(false);
       return;
     }
 
-    const fetchClassrooms = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
-        const response = await api.get<ClassroomDTO[]>(`/schools/${parsedSchoolId}/classrooms`);
-        setClasses(response.data ?? []);
-      } catch (e: any) {
-        console.error('Falha ao carregar as turmas:', e);
-        setError('Falha ao carregar as turmas.');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchClassrooms();
+    try {
+      setIsLoading(true);
+      setError(null);
+      const response = await api.get<ClassroomDTO[]>(`/schools/${parsedSchoolId}/classrooms`);
+      setClasses(response.data ?? []);
+    } catch (e: any) {
+      console.error('Falha ao carregar as turmas:', e);
+      setError('Falha ao carregar as turmas.');
+    } finally {
+      setIsLoading(false);
+    }
   }, [parsedSchoolId]);
+
+  // Carrega as turmas quando monta o componente
+  useEffect(() => {
+    fetchClassrooms();
+  }, [fetchClassrooms]);
+
+  // Recarrega as turmas quando a tela volta ao foco
+  useFocusEffect(
+    useCallback(() => {
+      fetchClassrooms();
+    }, [fetchClassrooms])
+  );
+
+  // Mostra apenas turmas ativas
+  const activeClasses = useMemo(() => {
+    return classes.filter(c => c.active !== false);
+  }, [classes]);
+
+  const handleEditClassroom = (classItem: ClassroomDTO, event: any) => {
+    event?.stopPropagation();
+    setShowMenuForClass(null);
+    
+    router.push({
+      pathname: '/(app)/edit-classroom' as any,
+      params: {
+        classroomId: classItem.id,
+        schoolId: parsedSchoolId,
+      },
+    });
+  };
+
+  const handleToggleClassroom = async (classItem: ClassroomDTO, event: any) => {
+    event?.stopPropagation();
+    setShowMenuForClass(null);
+
+    const action = classItem.active !== false ? 'deactivate' : 'reactivate';
+    const actionPt = classItem.active !== false ? 'desativar' : 'reativar';
+    const actionTitle = classItem.active !== false ? 'Desativar Turma' : 'Reativar Turma';
+    
+    Alert.alert(
+      actionTitle,
+      classItem.active !== false
+        ? `Tem certeza que deseja desativar a turma "${classItem.name}"?\n\nA turma será arquivada mas os dados serão mantidos.`
+        : `Tem certeza que deseja reativar a turma "${classItem.name}"?`,
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: classItem.active !== false ? 'Desativar' : 'Reativar',
+          style: classItem.active !== false ? 'destructive' : 'default',
+          onPress: async () => {
+            try {
+              setIsProcessing(true);
+              
+              await api.patch(`/classrooms/${classItem.id}/${action}`);
+              
+              // Recarregar a lista
+              await fetchClassrooms();
+              
+              Alert.alert(
+                'Sucesso!',
+                `Turma ${classItem.active !== false ? 'desativada' : 'reativada'} com sucesso.`
+              );
+            } catch (error: any) {
+              console.error(`Erro ao ${actionPt} turma:`, error);
+              Alert.alert('Erro', `Não foi possível ${actionPt} a turma.`);
+            } finally {
+              setIsProcessing(false);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   const onSelectClass = (classItem: ClassroomDTO) => {
     router.push({
       pathname: '/(app)/classroom-detail' as any,
       params: { 
         classroomId: classItem.id, 
-        classroomName: classItem.name 
+        classroomName: classItem.name,
+        schoolId: parsedSchoolId,
       },
     });
   };
 
   const handleNewClass = () => {
-    // TODO: Implementar criação de turma
-    console.log('Nova turma');
+    if (parsedSchoolId === null) return;
+    router.push({
+      pathname: '/(app)/new-classroom' as any,
+      params: {
+        schoolId: parsedSchoolId,
+        schoolName: schoolName || 'Escola',
+      },
+    });
   };
 
   const handleManageStudents = () => {
-    // TODO: Implementar gestão de alunos
-    console.log('Gerenciar alunos');
+    if (parsedSchoolId === null) return;
+    router.push({
+      pathname: '/(app)/student-list',
+      params: {
+        schoolId: parsedSchoolId,
+        schoolName: schoolName || 'Escola',
+      },
+    } as any);
   };
 
   const handleManageTeachers = () => {
@@ -144,6 +235,17 @@ export default function ClassSelectionScreen() {
     });
   };
 
+  const handleManageClassrooms = () => {
+    if (parsedSchoolId === null) return;
+    router.push({
+      pathname: '/(app)/manage-classrooms' as any,
+      params: {
+        schoolId: parsedSchoolId,
+        schoolName: schoolName || 'Escola',
+      },
+    });
+  };
+
   const getClassColor = (index: number) => {
     const colors = [
       { bg: '#FFFBEB', border: '#FDE68A', iconColor: '#D97706' },
@@ -157,42 +259,124 @@ export default function ClassSelectionScreen() {
 
   const renderClassCard = ({ item, index }: { item: ClassroomDTO; index: number }) => {
     const { bg, border, iconColor } = getClassColor(index);
+    const isInactive = item.active === false;
 
     return (
-      <TouchableOpacity
-        style={[styles.card, { backgroundColor: bg, borderColor: border }]}
-        onPress={() => onSelectClass(item)}
-        activeOpacity={0.7}
-      >
-        <View style={styles.cardHeader}>
-          <View style={[styles.cardIconContainer, { backgroundColor: bg, borderColor: border }]}>
-            <BookOpen size={24} color={iconColor} />
-          </View>
-          <View style={styles.cardInfo}>
-            <Text style={styles.cardTitle} numberOfLines={1}>
-              {item.name}
-            </Text>
-            {item.description && (
-              <Text style={styles.cardDescription} numberOfLines={1}>
-                {item.description}
-              </Text>
-            )}
-            {isManager && (
-              <View style={styles.cardMeta}>
-                <Users size={14} color="#6B7280" />
-                <Text style={styles.cardMetaText}>
-                  {item.studentCount || 0} alunos
+      <View style={styles.cardWrapper}>
+        <TouchableOpacity
+          style={[
+            styles.card, 
+            { backgroundColor: bg, borderColor: border },
+            isInactive && styles.cardInactive
+          ]}
+          onPress={() => onSelectClass(item)}
+          activeOpacity={0.7}
+          disabled={isProcessing}
+        >
+          <View style={styles.cardHeader}>
+            <View style={[styles.cardIconContainer, { backgroundColor: bg, borderColor: border }]}>
+              <BookOpen size={24} color={isInactive ? '#9CA3AF' : iconColor} />
+            </View>
+            <View style={styles.cardInfo}>
+              <View style={styles.cardTitleRow}>
+                <Text style={[styles.cardTitle, isInactive && styles.textInactive]} numberOfLines={1}>
+                  {item.name}
                 </Text>
+                {isInactive && (
+                  <View style={styles.inactiveBadge}>
+                    <Archive size={12} color="#6B7280" />
+                  </View>
+                )}
               </View>
+              {item.description && (
+                <Text style={[styles.cardDescription, isInactive && styles.textInactive]} numberOfLines={1}>
+                  {item.description}
+                </Text>
+              )}
+              {isManager && (
+                <View style={styles.cardMeta}>
+                  <Users size={14} color={isInactive ? '#9CA3AF' : '#6B7280'} />
+                  <Text style={[styles.cardMetaText, isInactive && styles.textInactive]}>
+                    {item.studentCount || 0} alunos
+                  </Text>
+                </View>
+              )}
+            </View>
+            
+            {/* Menu Button - Only for Managers */}
+            {isManager && (
+              <TouchableOpacity
+                style={styles.menuButton}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  setShowMenuForClass(showMenuForClass === item.id ? null : item.id);
+                }}
+                disabled={isProcessing}
+              >
+                <MoreVertical size={20} color="#6B7280" />
+              </TouchableOpacity>
             )}
           </View>
-        </View>
 
-        <View style={styles.cardFooter}>
-          <Text style={styles.cardAction}>Acessar turma</Text>
-          <ArrowRight size={18} color={iconColor} />
-        </View>
-      </TouchableOpacity>
+          <View style={styles.cardFooter}>
+            <Text style={[styles.cardAction, isInactive && styles.textInactive]}>
+              {isInactive ? 'Turma Arquivada' : 'Acessar turma'}
+            </Text>
+            {!isInactive && <ArrowRight size={18} color={iconColor} />}
+          </View>
+        </TouchableOpacity>
+
+        {/* Dropdown Menu */}
+        {isManager && showMenuForClass === item.id && (
+          <>
+            {/* Backdrop transparente */}
+            <TouchableOpacity 
+              style={styles.menuBackdrop}
+              activeOpacity={1}
+              onPress={() => setShowMenuForClass(null)}
+            />
+            
+            <View style={styles.dropdownMenu}>
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={(e) => handleEditClassroom(item, e)}
+                disabled={isProcessing}
+                activeOpacity={0.7}
+              >
+                <View style={[styles.menuIconContainer, { backgroundColor: '#F3E8FF' }]}>
+                  <Edit3 size={16} color="#8B5CF6" />
+                </View>
+                <Text style={styles.menuItemText}>Editar</Text>
+              </TouchableOpacity>
+              
+              <View style={styles.menuDivider} />
+              
+              <TouchableOpacity
+                style={styles.menuItem}
+                onPress={(e) => handleToggleClassroom(item, e)}
+                disabled={isProcessing}
+                activeOpacity={0.7}
+              >
+                {item.active !== false ? (
+                  <>
+                    <View style={[styles.menuIconContainer, { backgroundColor: '#FEE2E2' }]}>
+                      <Archive size={16} color="#DC2626" />
+                    </View>
+                    <Text style={[styles.menuItemText, { color: '#DC2626' }]}>Desativar</Text>
+                  </>
+                ) : (
+                  <>
+                    <View style={[styles.menuIconContainer, { backgroundColor: '#D1FAE5' }]}>
+                      <ArchiveRestore size={16} color="#16A34A" />
+                    </View>
+                    <Text style={[styles.menuItemText, { color: '#16A34A' }]}>Reativar</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </View>
     );
   };
 
@@ -250,12 +434,12 @@ export default function ClassSelectionScreen() {
           <View style={styles.actionsGrid}>
             <TouchableOpacity 
               style={styles.actionCard}
-              onPress={handleNewClass}
+              onPress={handleManageClassrooms}
             >
               <View style={[styles.actionIconContainer, { backgroundColor: '#F3E8FF' }]}>
-                <Plus size={20} color="#8B5CF6" />
+                <BookOpen size={20} color="#8B5CF6" />
               </View>
-              <Text style={styles.actionTitle}>Nova Turma</Text>
+              <Text style={styles.actionTitle}>Gerenciar Turmas</Text>
             </TouchableOpacity>
 
             <TouchableOpacity 
@@ -347,10 +531,10 @@ export default function ClassSelectionScreen() {
       {/* Título da lista */}
       <View style={styles.listHeader}>
         <Text style={styles.sectionTitle}>
-          {isManager ? 'Todas as Turmas' : 'Minhas Turmas'}
+          {isManager ? 'Turmas Ativas' : 'Minhas Turmas'}
         </Text>
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>{classes.length}</Text>
+          <Text style={styles.badgeText}>{activeClasses.length}</Text>
         </View>
       </View>
     </>
@@ -375,12 +559,13 @@ export default function ClassSelectionScreen() {
         </View>
       ) : (
         <FlatList
-          data={classes}
+          data={activeClasses}
           renderItem={renderClassCard}
           keyExtractor={(item) => String(item.id)}
           contentContainerStyle={styles.listContainer}
           showsVerticalScrollIndicator={false}
           ListHeaderComponent={renderHeader}
+          onScrollBeginDrag={() => setShowMenuForClass(null)}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <BookOpen size={64} color="#D1D5DB" />
@@ -610,10 +795,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 24,
   },
+  cardWrapper: {
+    marginBottom: 12,
+    position: 'relative',
+  },
   card: {
     borderRadius: 16,
     padding: 16,
-    marginBottom: 12,
     borderWidth: 2,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
@@ -621,9 +809,14 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
+  cardInactive: {
+    opacity: 0.6,
+    borderStyle: 'dashed',
+  },
   cardHeader: {
     flexDirection: 'row',
     marginBottom: 12,
+    alignItems: 'flex-start',
   },
   cardIconContainer: {
     width: 48,
@@ -638,11 +831,32 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
   },
+  cardTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 4,
+  },
   cardTitle: {
     fontSize: 17,
     fontWeight: '700',
     color: '#1F2937',
-    marginBottom: 4,
+    flex: 1,
+  },
+  inactiveBadge: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: '#F3F4F6',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textInactive: {
+    color: '#9CA3AF',
+  },
+  menuButton: {
+    padding: 4,
+    marginLeft: 4,
   },
   cardDescription: {
     fontSize: 13,
@@ -710,5 +924,56 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  menuBackdrop: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 999,
+  },
+  dropdownMenu: {
+    position: 'absolute',
+    top: 48,
+    right: 12,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    paddingVertical: 4,
+    minWidth: 170,
+    shadowColor: '#1F2937',
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.15,
+    shadowRadius: 20,
+    elevation: 16,
+    zIndex: 1000,
+    borderWidth: 1,
+    borderColor: '#F9FAFB',
+  },
+  menuItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    gap: 12,
+  },
+  menuIconContainer: {
+    width: 32,
+    height: 32,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  menuItemText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
+    flex: 1,
+  },
+  menuDivider: {
+    height: 1,
+    backgroundColor: '#F3F4F6',
+    marginVertical: 4,
+    marginHorizontal: 10,
   },
 });

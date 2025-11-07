@@ -6,7 +6,7 @@ import { getToken, removeToken, saveToken } from './auth';
 
 // Defina a URL base da sua API
 // (Use seu IP local para testes no celular, não 'localhost')
-const API_URL = 'http://192.168.0.4:8087/api'; 
+const API_URL = 'http://192.168.0.5:8087/api';
 
 const api = axios.create({
   baseURL: API_URL,

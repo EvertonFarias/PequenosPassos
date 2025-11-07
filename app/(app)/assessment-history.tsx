@@ -38,6 +38,7 @@ interface Assessment {
   studentId: number;
   studentName: string;
   classroomId: number;
+  classroomName?: string; // Nome da turma
   date: string;
   evaluatorName: string;
   evaluatedAt: string;
@@ -182,6 +183,9 @@ export default function AssessmentHistoryScreen() {
             </View>
             <View style={styles.studentDetails}>
               <Text style={styles.studentName}>{item.studentName}</Text>
+              {item.classroomName && (
+                <Text style={styles.classroomText}>{item.classroomName}</Text>
+              )}
               <Text style={styles.evaluatorText}>Por: {item.evaluatorName}</Text>
             </View>
           </View>
@@ -243,6 +247,14 @@ export default function AssessmentHistoryScreen() {
                 <Text style={styles.detailLabel}>Aluno</Text>
                 <Text style={styles.detailValue}>{selectedAssessment.studentName}</Text>
               </View>
+
+              {/* Turma */}
+              {selectedAssessment.classroomName && (
+                <View style={styles.detailSection}>
+                  <Text style={styles.detailLabel}>Turma</Text>
+                  <Text style={styles.detailValue}>{selectedAssessment.classroomName}</Text>
+                </View>
+              )}
 
               {/* Data */}
               <View style={styles.detailSection}>
@@ -467,6 +479,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#1F2937',
+    marginBottom: 2,
+  },
+  classroomText: {
+    fontSize: 13,
+    color: '#8B5CF6',
+    fontWeight: '600',
     marginBottom: 2,
   },
   evaluatorText: {

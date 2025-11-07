@@ -77,85 +77,108 @@ export default function SchoolSelectionScreen() {
     return colors[index % colors.length];
   };
 
+  const onManageStudents = (school: any) => {
+    router.push({
+      pathname: '/(app)/student-list',
+      params: {
+        schoolId: String(school.schoolId),
+        schoolName: String(school.schoolName),
+      },
+    } as any);
+  };
+
   const renderSchoolCard = ({ item, index }: { item: any; index: number }) => {
     const colors = getSchoolColors(index);
     const roleBadge = getRoleBadgeConfig(item.role);
     
     return (
-      <TouchableOpacity
-        style={styles.card}
-        onPress={() => onSelectSchool(item)}
-        activeOpacity={0.7}
-      >
-        {/* Header com ícone e badge */}
-        <View style={styles.cardHeader}>
-          <View style={[styles.schoolIconContainer, { backgroundColor: colors.bg, borderColor: colors.border }]}>
-            <Building2 size={28} color={colors.iconColor} />
-          </View>
-          
-          <View style={[styles.roleBadge, { backgroundColor: roleBadge.bg, borderColor: roleBadge.border }]}>
-            <GraduationCap size={12} color={roleBadge.text} />
-            <Text style={[styles.roleBadgeText, { color: roleBadge.text }]}>
-              {roleBadge.label}
-            </Text>
-          </View>
-        </View>
-
-        {/* Nome da escola */}
-        <Text style={styles.schoolName} numberOfLines={2}>
-          {item.schoolName}
-        </Text>
-
-        {/* Informações da escola */}
-        <View style={styles.infoContainer}>
-          {item.address && (
-            <View style={styles.infoRow}>
-              <MapPin size={14} color="#6B7280" />
-              <Text style={styles.infoText} numberOfLines={1}>
-                {item.address}
+      <View style={styles.card}>
+        <TouchableOpacity
+          onPress={() => onSelectSchool(item)}
+          activeOpacity={0.7}
+        >
+          {/* Header com ícone e badge */}
+          <View style={styles.cardHeader}>
+            <View style={[styles.schoolIconContainer, { backgroundColor: colors.bg, borderColor: colors.border }]}>
+              <Building2 size={28} color={colors.iconColor} />
+            </View>
+            
+            <View style={[styles.roleBadge, { backgroundColor: roleBadge.bg, borderColor: roleBadge.border }]}>
+              <GraduationCap size={12} color={roleBadge.text} />
+              <Text style={[styles.roleBadgeText, { color: roleBadge.text }]}>
+                {roleBadge.label}
               </Text>
             </View>
-          )}
-          
-          {item.phone && (
-            <View style={styles.infoRow}>
-              <Phone size={14} color="#6B7280" />
-              <Text style={styles.infoText}>{item.phone}</Text>
-            </View>
-          )}
-        </View>
+          </View>
 
-        {/* Estatísticas */}
-        <View style={styles.statsContainer}>
-          <View style={styles.statItem}>
-            <View style={styles.statIconContainer}>
-              <BookOpen size={16} color="#8B5CF6" />
+          {/* Nome da escola */}
+          <Text style={styles.schoolName} numberOfLines={2}>
+            {item.schoolName}
+          </Text>
+
+          {/* Informações da escola */}
+          <View style={styles.infoContainer}>
+            {item.address && (
+              <View style={styles.infoRow}>
+                <MapPin size={14} color="#6B7280" />
+                <Text style={styles.infoText} numberOfLines={1}>
+                  {item.address}
+                </Text>
+              </View>
+            )}
+            
+            {item.phone && (
+              <View style={styles.infoRow}>
+                <Phone size={14} color="#6B7280" />
+                <Text style={styles.infoText}>{item.phone}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Estatísticas */}
+          <View style={styles.statsContainer}>
+            <View style={styles.statItem}>
+              <View style={styles.statIconContainer}>
+                <BookOpen size={16} color="#8B5CF6" />
+              </View>
+              <View style={styles.statTextContainer}>
+                <Text style={styles.statValue}>{item.classroomCount || 0}</Text>
+                <Text style={styles.statLabel}>Turmas</Text>
+              </View>
             </View>
-            <View style={styles.statTextContainer}>
-              <Text style={styles.statValue}>{item.classroomCount || 0}</Text>
-              <Text style={styles.statLabel}>Turmas</Text>
+            
+            <View style={styles.statDivider} />
+            
+            <View style={styles.statItem}>
+              <View style={styles.statIconContainer}>
+                <Users size={16} color="#8B5CF6" />
+              </View>
+              <View style={styles.statTextContainer}>
+                <Text style={styles.statValue}>{item.studentCount || 0}</Text>
+                <Text style={styles.statLabel}>Usuários</Text>
+              </View>
             </View>
           </View>
-          
-          <View style={styles.statDivider} />
-          
-          <View style={styles.statItem}>
-            <View style={styles.statIconContainer}>
-              <Users size={16} color="#8B5CF6" />
-            </View>
-            <View style={styles.statTextContainer}>
-              <Text style={styles.statValue}>{item.studentCount || 0}</Text>
-              <Text style={styles.statLabel}>Usuários</Text>
-            </View>
-          </View>
-        </View>
 
-        {/* Botão de ação */}
-        <View style={styles.actionButton}>
-          <Text style={styles.actionButtonText}>Selecionar Escola</Text>
-          <ArrowRight size={18} color="#8B5CF6" />
+          {/* Botão de ação */}
+          <View style={styles.actionButton}>
+            <Text style={styles.actionButtonText}>Selecionar Escola</Text>
+            <ArrowRight size={18} color="#8B5CF6" />
+          </View>
+        </TouchableOpacity>
+
+        {/* Botões de ações adicionais */}
+        <View style={styles.cardActions}>
+          <TouchableOpacity
+            style={styles.secondaryActionButton}
+            onPress={() => onManageStudents(item)}
+            activeOpacity={0.7}
+          >
+            <Users size={18} color="#8B5CF6" />
+            <Text style={styles.secondaryActionButtonText}>Gerenciar Alunos</Text>
+          </TouchableOpacity>
         </View>
-      </TouchableOpacity>
+      </View>
     );
   };
 
@@ -281,6 +304,28 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.05,
     shadowRadius: 8,
     elevation: 3,
+  },
+  cardActions: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#F3F4F6',
+  },
+  secondaryActionButton: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 10,
+    borderRadius: 12,
+    gap: 8,
+    borderWidth: 2,
+    borderColor: '#E9D5FF',
+  },
+  secondaryActionButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#8B5CF6',
   },
   cardHeader: {
     flexDirection: 'row',

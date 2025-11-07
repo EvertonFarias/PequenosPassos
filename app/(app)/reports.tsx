@@ -27,6 +27,7 @@ import {
   X,
   CheckSquare,
   Square,
+  AlertCircle,
 } from 'lucide-react-native';
 import api from '../../lib/api';
 import { useToast } from '../../hooks/useToast';
@@ -48,21 +49,33 @@ interface Classroom {
   name: string;
 }
 
+interface StudentClassroom {
+  classroomId: number;
+  classroomName: string;
+  active: boolean;
+  assessmentCount: number;
+}
+
 export default function ReportsScreen() {
   const router = useRouter();
   const toast = useToast();
   const { schoolId, schoolName, classroomId, classroomName } = useLocalSearchParams();
 
-  const [reportType, setReportType] = useState<'STUDENT' | 'CLASSROOM' | 'CLASSROOM_COMPARISON'>('CLASSROOM');
+  const [reportType, setReportType] = useState<'STUDENT' | 'CLASSROOM' | 'CLASSROOM_COMPARISON' | 'STUDENT_CLASSROOM_COMPARISON'>('CLASSROOM');
   const [isLoading, setIsLoading] = useState(false);
   const [showMetricsModal, setShowMetricsModal] = useState(false);
   const [showStudentModal, setShowStudentModal] = useState(false);
   const [showClassroomModal, setShowClassroomModal] = useState(false);
 
+  // Estado de validação
+  const [showValidationErrors, setShowValidationErrors] = useState(false);
+
   // Dados
   const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
   const [students, setStudents] = useState<Student[]>([]);
   const [classrooms, setClassrooms] = useState<Classroom[]>([]);
+  const [studentClassrooms, setStudentClassrooms] = useState<StudentClassroom[]>([]);
+  const [canCompareStudentClassrooms, setCanCompareStudentClassrooms] = useState(false);
 
   // Filtros
   const [startDate, setStartDate] = useState(new Date());
@@ -117,24 +130,63 @@ export default function ReportsScreen() {
     fetchClassrooms();
   }, [parsedSchoolId, parsedClassroomId]);
 
-  // Carregar alunos quando selecionar turma (para relatório individual)
+  // Carregar alunos
   useEffect(() => {
-    if (reportType !== 'STUDENT' || !selectedClassroom) {
-      setStudents([]);
+    // Para relatório individual, carrega alunos da turma selecionada
+    if (reportType === 'STUDENT' && selectedClassroom) {
+      const fetchStudents = async () => {
+        try {
+          const response = await api.get<Student[]>(`/classrooms/${selectedClassroom.id}/students`);
+          setStudents(response.data || []);
+        } catch (error) {
+          console.error('Erro ao carregar alunos da turma:', error);
+        }
+      };
+      fetchStudents();
       return;
     }
 
-    const fetchStudents = async () => {
+    // Para comparação de turmas do aluno, carrega todos os alunos da escola
+    if (reportType === 'STUDENT_CLASSROOM_COMPARISON' && parsedSchoolId) {
+      const fetchAllStudents = async () => {
+        try {
+          const response = await api.get<Student[]>(`/students/school/${parsedSchoolId}?activeOnly=true`);
+          setStudents(response.data || []);
+        } catch (error) {
+          console.error('Erro ao carregar alunos da escola:', error);
+        }
+      };
+      fetchAllStudents();
+      return;
+    }
+
+    // Limpa alunos em outros casos
+    setStudents([]);
+  }, [reportType, selectedClassroom, parsedSchoolId]);
+
+  // Carregar turmas do aluno quando selecionar aluno
+  useEffect(() => {
+    if (!selectedStudent) {
+      setStudentClassrooms([]);
+      setCanCompareStudentClassrooms(false);
+      return;
+    }
+
+    const fetchStudentClassrooms = async () => {
       try {
-        const response = await api.get<Student[]>(`/classrooms/${selectedClassroom.id}/students`);
-        setStudents(response.data || []);
+        const response = await api.get<StudentClassroom[]>(`/reports/student/${selectedStudent.id}/classrooms`);
+        const classrooms = response.data || [];
+        setStudentClassrooms(classrooms);
+        setCanCompareStudentClassrooms(classrooms.length >= 2);
       } catch (error) {
-        console.error('Erro ao carregar alunos:', error);
+        console.error('Erro ao carregar turmas do aluno:', error);
+        setStudentClassrooms([]);
+        setCanCompareStudentClassrooms(false);
       }
     };
 
-    fetchStudents();
-  }, [reportType, selectedClassroom]);
+    fetchStudentClassrooms();
+  }, [selectedStudent]);
 
   const toggleMetric = (metricId: number) => {
     setSelectedMetrics(prev => 
@@ -152,25 +204,59 @@ export default function ReportsScreen() {
     );
   };
 
+  // Resetar validações quando mudar o tipo de relatório
+  useEffect(() => {
+    setShowValidationErrors(false);
+    setSelectedStudent(null);
+    setSelectedClassroom(null);
+    setSelectedClassrooms([]);
+    setStudentClassrooms([]);
+    setCanCompareStudentClassrooms(false);
+  }, [reportType]);
+
   const handleGenerateReport = async () => {
-    // Validações
+    setShowValidationErrors(true);
+
+    // Validações com mensagens mais específicas
+    const validations = [];
+
     if (!startDate || !endDate) {
-      toast.showToast('Selecione o período do relatório', 'error');
-      return;
+      validations.push('Selecione o período do relatório');
     }
 
-    if (reportType === 'STUDENT' && !selectedStudent) {
-      toast.showToast('Selecione um aluno', 'error');
-      return;
+    if (reportType === 'STUDENT') {
+      if (!selectedClassroom) {
+        validations.push('Selecione uma turma');
+      }
+      if (!selectedStudent) {
+        validations.push('Selecione um aluno');
+      }
     }
 
     if (reportType === 'CLASSROOM' && !selectedClassroom) {
-      toast.showToast('Selecione uma turma', 'error');
-      return;
+      validations.push('Selecione uma turma');
     }
 
     if (reportType === 'CLASSROOM_COMPARISON' && selectedClassrooms.length < 2) {
-      toast.showToast('Selecione pelo menos 2 turmas para comparar', 'error');
+      validations.push('Selecione pelo menos 2 turmas para comparar');
+    }
+
+    if (reportType === 'STUDENT_CLASSROOM_COMPARISON') {
+      if (!selectedStudent) {
+        validations.push('Selecione um aluno');
+      }
+      if (selectedClassrooms.length < 2) {
+        validations.push('Selecione pelo menos 2 turmas do aluno para comparar');
+      }
+    }
+
+    // Se houver erros, mostrar alerta com todas as validações
+    if (validations.length > 0) {
+      Alert.alert(
+        '⚠️ Atenção',
+        'Por favor, preencha os seguintes campos:\n\n' + validations.map((v, i) => `${i + 1}. ${v}`).join('\n'),
+        [{ text: 'OK', style: 'default' }]
+      );
       return;
     }
 
@@ -204,6 +290,10 @@ export default function ReportsScreen() {
       } else if (reportType === 'CLASSROOM_COMPARISON') {
         requestData.classroomIds = selectedClassrooms;
         endpoint = '/reports/classroom-comparison';
+      } else if (reportType === 'STUDENT_CLASSROOM_COMPARISON') {
+        requestData.studentId = selectedStudent?.id;
+        requestData.classroomIds = selectedClassrooms;
+        endpoint = '/reports/student-classroom-comparison';
       }
 
       console.log('📊 Gerando relatório:', { endpoint, requestData });
@@ -232,6 +322,45 @@ export default function ReportsScreen() {
 
   const handleExportPDF = () => {
     toast.showToast('Exportação de PDF em desenvolvimento', 'info');
+  };
+
+  // Verificar se o formulário está válido
+  const isFormValid = () => {
+    if (!startDate || !endDate) return false;
+    
+    if (reportType === 'STUDENT') {
+      return selectedClassroom && selectedStudent;
+    }
+    
+    if (reportType === 'CLASSROOM') {
+      return selectedClassroom;
+    }
+    
+    if (reportType === 'CLASSROOM_COMPARISON') {
+      return selectedClassrooms.length >= 2;
+    }
+
+    if (reportType === 'STUDENT_CLASSROOM_COMPARISON') {
+      return selectedStudent && selectedClassrooms.length >= 2;
+    }
+    
+    return false;
+  };
+
+  // Verificar se um campo específico é obrigatório e está vazio
+  const isFieldRequired = (field: string) => {
+    if (!showValidationErrors) return false;
+    
+    switch (field) {
+      case 'classroom':
+        return (reportType === 'STUDENT' || reportType === 'CLASSROOM') && !selectedClassroom;
+      case 'student':
+        return (reportType === 'STUDENT' || reportType === 'STUDENT_CLASSROOM_COMPARISON') && !selectedStudent;
+      case 'classrooms':
+        return (reportType === 'CLASSROOM_COMPARISON' || reportType === 'STUDENT_CLASSROOM_COMPARISON') && selectedClassrooms.length < 2;
+      default:
+        return false;
+    }
   };
 
   return (
@@ -325,6 +454,21 @@ export default function ReportsScreen() {
           </TouchableOpacity>
 
           <TouchableOpacity
+            style={[styles.reportTypeCard, reportType === 'STUDENT_CLASSROOM_COMPARISON' && styles.reportTypeCardActive]}
+            onPress={() => setReportType('STUDENT_CLASSROOM_COMPARISON')}
+          >
+            <View style={[styles.iconCircle, { backgroundColor: '#F3E8FF' }]}>
+              <TrendingUp size={24} color="#7C3AED" />
+            </View>
+            <View style={styles.reportTypeContent}>
+              <Text style={styles.reportTypeTitle}>Comparação de Turmas do Aluno</Text>
+              <Text style={styles.reportTypeDescription}>
+                Compare o desempenho do aluno em diferentes turmas
+              </Text>
+            </View>
+          </TouchableOpacity>
+
+          <TouchableOpacity
             style={[styles.reportTypeCard, reportType === 'CLASSROOM' && styles.reportTypeCardActive]}
             onPress={() => setReportType('CLASSROOM')}
           >
@@ -358,69 +502,237 @@ export default function ReportsScreen() {
         {/* Seleção de Turma (para STUDENT e CLASSROOM) */}
         {(reportType === 'STUDENT' || reportType === 'CLASSROOM') && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Turma</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.sectionTitle}>Turma</Text>
+              {isFieldRequired('classroom') && (
+                <View style={styles.requiredBadge}>
+                  <Text style={styles.requiredText}>Obrigatório</Text>
+                </View>
+              )}
+            </View>
             <TouchableOpacity
-              style={styles.selectButton}
+              style={[
+                styles.selectButton,
+                isFieldRequired('classroom') && styles.selectButtonError
+              ]}
               onPress={() => setShowClassroomModal(true)}
             >
-              <Text style={styles.selectButtonText}>
+              <Text style={[
+                styles.selectButtonText,
+                !selectedClassroom && styles.selectButtonPlaceholder
+              ]}>
                 {selectedClassroom ? selectedClassroom.name : 'Selecionar Turma'}
               </Text>
-              <ChevronDown size={20} color="#6B7280" />
+              <ChevronDown size={20} color={isFieldRequired('classroom') ? '#EF4444' : '#6B7280'} />
             </TouchableOpacity>
+            {isFieldRequired('classroom') && (
+              <Text style={styles.errorText}>Por favor, selecione uma turma</Text>
+            )}
           </View>
         )}
 
         {/* Seleção de Aluno (apenas para STUDENT) */}
         {reportType === 'STUDENT' && selectedClassroom && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Aluno</Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.sectionTitle}>Aluno</Text>
+              {isFieldRequired('student') && (
+                <View style={styles.requiredBadge}>
+                  <Text style={styles.requiredText}>Obrigatório</Text>
+                </View>
+              )}
+            </View>
             <TouchableOpacity
-              style={styles.selectButton}
+              style={[
+                styles.selectButton,
+                isFieldRequired('student') && styles.selectButtonError
+              ]}
               onPress={() => setShowStudentModal(true)}
             >
-              <Text style={styles.selectButtonText}>
+              <Text style={[
+                styles.selectButtonText,
+                !selectedStudent && styles.selectButtonPlaceholder
+              ]}>
                 {selectedStudent ? selectedStudent.name : 'Selecionar Aluno'}
               </Text>
-              <ChevronDown size={20} color="#6B7280" />
+              <ChevronDown size={20} color={isFieldRequired('student') ? '#EF4444' : '#6B7280'} />
             </TouchableOpacity>
+            {isFieldRequired('student') && (
+              <Text style={styles.errorText}>Por favor, selecione um aluno</Text>
+            )}
+          </View>
+        )}
+
+        {/* Seleção de Aluno para Comparação entre Turmas */}
+        {reportType === 'STUDENT_CLASSROOM_COMPARISON' && (
+          <>
+            {/* Info Box Explicativo */}
+            <View style={styles.infoBox}>
+              <TrendingUp size={20} color="#7C3AED" />
+              <Text style={[styles.infoText, { color: '#5B21B6' }]}>
+                Compare o desempenho de um aluno em diferentes turmas no período selecionado.
+              </Text>
+            </View>
+
+            <View style={styles.section}>
+              <View style={styles.labelRow}>
+                <Text style={styles.sectionTitle}>Selecionar Aluno</Text>
+                {isFieldRequired('student') && (
+                  <View style={styles.requiredBadge}>
+                    <Text style={styles.requiredText}>Obrigatório</Text>
+                  </View>
+                )}
+              </View>
+              <TouchableOpacity
+                style={[
+                  styles.selectButton,
+                  isFieldRequired('student') && styles.selectButtonError
+                ]}
+                onPress={() => setShowStudentModal(true)}
+              >
+                <Text style={[
+                  styles.selectButtonText,
+                  !selectedStudent && styles.selectButtonPlaceholder
+                ]}>
+                  {selectedStudent ? selectedStudent.name : 'Selecionar Aluno'}
+                </Text>
+                <ChevronDown size={20} color={isFieldRequired('student') ? '#EF4444' : '#6B7280'} />
+              </TouchableOpacity>
+              {isFieldRequired('student') && (
+                <Text style={styles.errorText}>Por favor, selecione um aluno</Text>
+              )}
+            </View>
+          </>
+        )}
+
+        {/* Seleção de Turmas do Aluno para Comparação */}
+        {reportType === 'STUDENT_CLASSROOM_COMPARISON' && selectedStudent && (
+          <View style={styles.section}>
+            <View style={styles.labelRow}>
+              <Text style={styles.sectionTitle}>
+                Turmas para Comparar
+              </Text>
+              {isFieldRequired('classrooms') && (
+                <View style={styles.requiredBadge}>
+                  <Text style={styles.requiredText}>Mínimo 2</Text>
+                </View>
+              )}
+            </View>
+            
+            {studentClassrooms.length >= 2 ? (
+              <>
+                <View style={styles.studentClassroomsInfo}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Users size={16} color="#0369A1" />
+                    <Text style={styles.studentClassroomsInfoText}>
+                      {selectedStudent.name} está matriculado(a) em {studentClassrooms.length} turmas
+                    </Text>
+                  </View>
+                </View>
+                <TouchableOpacity
+                  style={[
+                    styles.selectButton,
+                    isFieldRequired('classrooms') && styles.selectButtonError
+                  ]}
+                  onPress={() => setShowClassroomModal(true)}
+                >
+                  <Text style={[
+                    styles.selectButtonText,
+                    selectedClassrooms.length === 0 && styles.selectButtonPlaceholder
+                  ]}>
+                    {selectedClassrooms.length > 0 
+                      ? `${selectedClassrooms.length} turma${selectedClassrooms.length > 1 ? 's' : ''} selecionada${selectedClassrooms.length > 1 ? 's' : ''}`
+                      : 'Selecionar Turmas para Comparar'}
+                  </Text>
+                  <ChevronDown size={20} color={isFieldRequired('classrooms') ? '#EF4444' : '#6B7280'} />
+                </TouchableOpacity>
+                {isFieldRequired('classrooms') && (
+                  <Text style={styles.errorText}>Selecione pelo menos 2 turmas para comparar</Text>
+                )}
+                {selectedClassrooms.length > 0 && (
+                  <Text style={styles.helpText}>
+                    {selectedClassrooms.length} de {studentClassrooms.length} turmas selecionadas
+                  </Text>
+                )}
+              </>
+            ) : (
+              <View style={[styles.infoBox, { backgroundColor: '#FEF3C7', borderColor: '#FDE68A' }]}>
+                <AlertCircle size={20} color="#92400E" />
+                <Text style={[styles.infoText, { color: '#92400E' }]}>
+                  Este aluno está matriculado em apenas {studentClassrooms.length} turma{studentClassrooms.length !== 1 ? 's' : ''}. 
+                  É necessário que o aluno esteja em pelo menos 2 turmas para gerar este relatório.
+                </Text>
+              </View>
+            )}
           </View>
         )}
 
         {/* Seleção de Turmas para Comparação */}
         {reportType === 'CLASSROOM_COMPARISON' && (
           <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              Turmas para Comparar ({selectedClassrooms.length} selecionadas)
-            </Text>
+            <View style={styles.labelRow}>
+              <Text style={styles.sectionTitle}>
+                Turmas para Comparar
+              </Text>
+              {isFieldRequired('classrooms') && (
+                <View style={styles.requiredBadge}>
+                  <Text style={styles.requiredText}>Mínimo 2</Text>
+                </View>
+              )}
+            </View>
             <TouchableOpacity
-              style={styles.selectButton}
+              style={[
+                styles.selectButton,
+                isFieldRequired('classrooms') && styles.selectButtonError
+              ]}
               onPress={() => setShowClassroomModal(true)}
             >
-              <Text style={styles.selectButtonText}>Selecionar Turmas</Text>
-              <ChevronDown size={20} color="#6B7280" />
+              <Text style={[
+                styles.selectButtonText,
+                selectedClassrooms.length === 0 && styles.selectButtonPlaceholder
+              ]}>
+                {selectedClassrooms.length > 0 
+                  ? `${selectedClassrooms.length} turma${selectedClassrooms.length > 1 ? 's' : ''} selecionada${selectedClassrooms.length > 1 ? 's' : ''}`
+                  : 'Selecionar Turmas'}
+              </Text>
+              <ChevronDown size={20} color={isFieldRequired('classrooms') ? '#EF4444' : '#6B7280'} />
             </TouchableOpacity>
+            {isFieldRequired('classrooms') && (
+              <Text style={styles.errorText}>Selecione pelo menos 2 turmas para comparar</Text>
+            )}
           </View>
         )}
 
         {/* Seleção de Métricas */}
         <View style={styles.section}>
           <Text style={styles.sectionTitle}>
-            Métricas ({selectedMetrics.length > 0 ? selectedMetrics.length : 'Todas'})
+            Métricas {selectedMetrics.length > 0 && `(${selectedMetrics.length} selecionadas)`}
           </Text>
           <TouchableOpacity
             style={styles.selectButton}
             onPress={() => setShowMetricsModal(true)}
           >
-            <Text style={styles.selectButtonText}>Filtrar Métricas</Text>
+            <Text style={styles.selectButtonText}>
+              {selectedMetrics.length > 0 
+                ? `${selectedMetrics.length} métrica${selectedMetrics.length > 1 ? 's' : ''} selecionada${selectedMetrics.length > 1 ? 's' : ''}`
+                : 'Todas as Métricas'}
+            </Text>
             <ChevronDown size={20} color="#6B7280" />
           </TouchableOpacity>
+          <Text style={styles.helpText}>
+            {selectedMetrics.length === 0 
+              ? 'Todas as métricas ativas serão incluídas' 
+              : 'Apenas as métricas selecionadas serão incluídas'}
+          </Text>
         </View>
 
         {/* Ações */}
         <View style={styles.actions}>
           <TouchableOpacity
-            style={styles.primaryButton}
+            style={[
+              styles.primaryButton,
+              (!isFormValid() || isLoading) && styles.primaryButtonDisabled
+            ]}
             onPress={handleGenerateReport}
             disabled={isLoading}
           >
@@ -429,28 +741,32 @@ export default function ReportsScreen() {
             ) : (
               <>
                 <FileText size={20} color="#FFFFFF" />
-                <Text style={styles.primaryButtonText}>Configurar e Gerar</Text>
+                <Text style={styles.primaryButtonText}>
+                  {isFormValid() ? 'Gerar Relatório' : 'Preencha os campos obrigatórios'}
+                </Text>
               </>
             )}
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={styles.secondaryButton}
-            onPress={handleExportPDF}
-            disabled={isLoading}
-          >
-            <Download size={20} color="#8B5CF6" />
-            <Text style={styles.secondaryButtonText}>Exportar PDF</Text>
           </TouchableOpacity>
         </View>
 
         {/* Info Box */}
-        <View style={styles.infoBox}>
-          <Calendar size={20} color="#2563EB" />
-          <Text style={styles.infoText}>
-            Os relatórios permitem filtrar período, métricas específicas e visualizar gráficos de evolução.
-          </Text>
-        </View>
+        {!isFormValid() && showValidationErrors && (
+          <View style={[styles.infoBox, styles.warningBox]}>
+            <Text style={styles.warningIcon}>⚠️</Text>
+            <Text style={styles.warningText}>
+              Preencha todos os campos obrigatórios para gerar o relatório
+            </Text>
+          </View>
+        )}
+
+        {isFormValid() && (
+          <View style={styles.infoBox}>
+            <Calendar size={20} color="#2563EB" />
+            <Text style={styles.infoText}>
+              Tudo pronto! Clique em "Gerar Relatório" para visualizar os dados com gráficos de evolução.
+            </Text>
+          </View>
+        )}
       </ScrollView>
 
       {/* Modal de Métricas */}
@@ -510,11 +826,25 @@ export default function ReportsScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Selecionar Aluno</Text>
+              <Text style={styles.modalTitle}>
+                {reportType === 'STUDENT_CLASSROOM_COMPARISON' 
+                  ? 'Selecionar Aluno para Comparação' 
+                  : 'Selecionar Aluno'}
+              </Text>
               <TouchableOpacity onPress={() => setShowStudentModal(false)}>
                 <X size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
+            {reportType === 'STUDENT_CLASSROOM_COMPARISON' && (
+              <View style={{ padding: 16, paddingTop: 0, paddingBottom: 8 }}>
+                <View style={[styles.infoBox, { margin: 0, backgroundColor: '#F5F3FF', borderColor: '#DDD6FE' }]}>
+                  <TrendingUp size={16} color="#7C3AED" />
+                  <Text style={[styles.infoText, { fontSize: 12, color: '#5B21B6' }]}>
+                    Selecione um aluno matriculado em pelo menos 2 turmas
+                  </Text>
+                </View>
+              </View>
+            )}
             <ScrollView style={styles.modalScroll}>
               {Array.isArray(students) && students.length > 0 ? students.map(student => (
                 <TouchableOpacity
@@ -537,7 +867,11 @@ export default function ReportsScreen() {
               )) : (
                 <View style={styles.emptyState}>
                   <Text style={styles.emptyStateText}>
-                    {selectedClassroom ? 'Nenhum aluno nesta turma' : 'Selecione uma turma primeiro'}
+                    {reportType === 'STUDENT_CLASSROOM_COMPARISON' 
+                      ? 'Nenhum aluno disponível' 
+                      : selectedClassroom 
+                        ? 'Nenhum aluno nesta turma' 
+                        : 'Selecione uma turma primeiro'}
                   </Text>
                 </View>
               )}
@@ -554,50 +888,83 @@ export default function ReportsScreen() {
               <Text style={styles.modalTitle}>
                 {reportType === 'CLASSROOM_COMPARISON' 
                   ? 'Selecionar Turmas (mín. 2)' 
-                  : 'Selecionar Turma'}
+                  : reportType === 'STUDENT_CLASSROOM_COMPARISON'
+                    ? 'Turmas do Aluno (mín. 2)'
+                    : 'Selecionar Turma'}
               </Text>
               <TouchableOpacity onPress={() => setShowClassroomModal(false)}>
                 <X size={24} color="#6B7280" />
               </TouchableOpacity>
             </View>
             <ScrollView style={styles.modalScroll}>
-              {Array.isArray(classrooms) && classrooms.length > 0 ? classrooms.map(classroom => (
-                <TouchableOpacity
-                  key={classroom.id}
-                  style={styles.modalItem}
-                  onPress={() => {
-                    if (reportType === 'CLASSROOM_COMPARISON') {
-                      toggleClassroomForComparison(classroom.id);
-                    } else {
-                      setSelectedClassroom(classroom);
-                      setShowClassroomModal(false);
-                    }
-                  }}
-                >
-                  <View style={styles.checkbox}>
-                    {reportType === 'CLASSROOM_COMPARISON' ? (
-                      selectedClassrooms.includes(classroom.id) ? (
+              {reportType === 'STUDENT_CLASSROOM_COMPARISON' ? (
+                // Modal para turmas do aluno
+                Array.isArray(studentClassrooms) && studentClassrooms.length > 0 ? studentClassrooms.map(classroom => (
+                  <TouchableOpacity
+                    key={classroom.classroomId}
+                    style={styles.modalItem}
+                    onPress={() => toggleClassroomForComparison(classroom.classroomId)}
+                  >
+                    <View style={styles.checkbox}>
+                      {selectedClassrooms.includes(classroom.classroomId) ? (
                         <CheckSquare size={20} color="#8B5CF6" />
                       ) : (
                         <Square size={20} color="#9CA3AF" />
-                      )
-                    ) : (
-                      selectedClassroom?.id === classroom.id ? (
-                        <CheckSquare size={20} color="#8B5CF6" />
-                      ) : (
-                        <Square size={20} color="#9CA3AF" />
-                      )
-                    )}
+                      )}
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.modalItemText}>{classroom.classroomName}</Text>
+                      <Text style={{ fontSize: 12, color: '#6B7280', marginTop: 2 }}>
+                        {classroom.assessmentCount} avaliação{classroom.assessmentCount !== 1 ? 'ões' : ''}
+                        {!classroom.active && ' • Inativa'}
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
+                )) : (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateText}>Nenhuma turma do aluno disponível</Text>
                   </View>
-                  <Text style={styles.modalItemText}>{classroom.name}</Text>
-                </TouchableOpacity>
-              )) : (
-                <View style={styles.emptyState}>
-                  <Text style={styles.emptyStateText}>Nenhuma turma disponível</Text>
-                </View>
+                )
+              ) : (
+                // Modal para turmas normais
+                Array.isArray(classrooms) && classrooms.length > 0 ? classrooms.map(classroom => (
+                  <TouchableOpacity
+                    key={classroom.id}
+                    style={styles.modalItem}
+                    onPress={() => {
+                      if (reportType === 'CLASSROOM_COMPARISON') {
+                        toggleClassroomForComparison(classroom.id);
+                      } else {
+                        setSelectedClassroom(classroom);
+                        setShowClassroomModal(false);
+                      }
+                    }}
+                  >
+                    <View style={styles.checkbox}>
+                      {reportType === 'CLASSROOM_COMPARISON' ? (
+                        selectedClassrooms.includes(classroom.id) ? (
+                          <CheckSquare size={20} color="#8B5CF6" />
+                        ) : (
+                          <Square size={20} color="#9CA3AF" />
+                        )
+                      ) : (
+                        selectedClassroom?.id === classroom.id ? (
+                          <CheckSquare size={20} color="#8B5CF6" />
+                        ) : (
+                          <Square size={20} color="#9CA3AF" />
+                        )
+                      )}
+                    </View>
+                    <Text style={styles.modalItemText}>{classroom.name}</Text>
+                  </TouchableOpacity>
+                )) : (
+                  <View style={styles.emptyState}>
+                    <Text style={styles.emptyStateText}>Nenhuma turma disponível</Text>
+                  </View>
+                )
               )}
             </ScrollView>
-            {reportType === 'CLASSROOM_COMPARISON' && (
+            {(reportType === 'CLASSROOM_COMPARISON' || reportType === 'STUDENT_CLASSROOM_COMPARISON') && (
               <TouchableOpacity
                 style={styles.modalButton}
                 onPress={() => setShowClassroomModal(false)}
@@ -710,6 +1077,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#FFFFFF',
   },
+  primaryButtonDisabled: {
+    backgroundColor: '#D1D5DB',
+    opacity: 0.7,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
   secondaryButton: {
     flexDirection: 'row',
     backgroundColor: '#FFFFFF',
@@ -786,6 +1159,100 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#1F2937',
   },
+  selectButtonPlaceholder: {
+    color: '#9CA3AF',
+  },
+  selectButtonError: {
+    borderColor: '#EF4444',
+    borderWidth: 2,
+    backgroundColor: '#FEF2F2',
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  requiredBadge: {
+    backgroundColor: '#FEE2E2',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  requiredText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#DC2626',
+  },
+  errorText: {
+    fontSize: 12,
+    color: '#EF4444',
+    marginTop: 6,
+    marginLeft: 4,
+  },
+  helpText: {
+    fontSize: 12,
+    color: '#6B7280',
+    marginTop: 6,
+    marginLeft: 4,
+    fontStyle: 'italic',
+  },
+  summaryCard: {
+    backgroundColor: '#F0FDF4',
+    borderRadius: 12,
+    padding: 16,
+    margin: 20,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#BBF7D0',
+  },
+  summaryTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#166534',
+  },
+  summaryContent: {
+    gap: 8,
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  summaryLabel: {
+    fontSize: 13,
+    color: '#166534',
+    fontWeight: '600',
+  },
+  summaryValue: {
+    fontSize: 13,
+    color: '#166534',
+    flex: 1,
+    textAlign: 'right',
+  },
+  warningBox: {
+    backgroundColor: '#FEF3C7',
+    borderColor: '#FDE68A',
+  },
+  warningIcon: {
+    fontSize: 20,
+  },
+  warningText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#92400E',
+    lineHeight: 18,
+    fontWeight: '500',
+  },
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
@@ -856,5 +1323,55 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#9CA3AF',
     textAlign: 'center',
+  },
+  comparisonHint: {
+    marginTop: 16,
+    backgroundColor: '#F5F3FF',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#DDD6FE',
+  },
+  comparisonHintHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  comparisonHintTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6B21A8',
+  },
+  comparisonHintText: {
+    fontSize: 13,
+    color: '#7C3AED',
+    marginBottom: 12,
+    lineHeight: 18,
+  },
+  comparisonButton: {
+    backgroundColor: '#8B5CF6',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  comparisonButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFFFF',
+  },
+  studentClassroomsInfo: {
+    backgroundColor: '#F0F9FF',
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#BAE6FD',
+  },
+  studentClassroomsInfoText: {
+    fontSize: 13,
+    color: '#0369A1',
+    fontWeight: '600',
   },
 });

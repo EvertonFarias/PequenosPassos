@@ -14,6 +14,7 @@ import {
   RefreshControl,
 } from 'react-native';
 import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
+import { useAuth } from '../../context/AuthContext';
 import { AppHeader } from '../../components/AppHeader';
 import { 
   User, 
@@ -69,7 +70,8 @@ interface AssessmentHistoryResponse {
 export default function ClassroomDetailScreen() {
   const router = useRouter();
   const toast = useToast();
-  const { classroomId, classroomName } = useLocalSearchParams();
+  const { user, schools } = useAuth();
+  const { classroomId, classroomName, schoolId } = useLocalSearchParams();
 
   const [students, setStudents] = useState<StudentDTO[]>([]);
   const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
@@ -82,6 +84,7 @@ export default function ClassroomDetailScreen() {
   const [refreshing, setRefreshing] = useState(false);
 
   const parsedClassroomId = Array.isArray(classroomId) ? Number(classroomId[0]) : Number(classroomId);
+  const parsedSchoolId = Array.isArray(schoolId) ? Number(schoolId[0]) : Number(schoolId);
   const displayName = Array.isArray(classroomName) ? classroomName[0] : classroomName;
 
   // Função para carregar dados da turma (reutilizável)
@@ -109,7 +112,12 @@ export default function ClassroomDetailScreen() {
       const studentsWithStatus = await Promise.all(
         studentsList.map(async (student) => {
           try {
-            const statusResponse = await api.get<{ assessed: boolean }>(`/students/${student.id}/assessment-status`);
+            const statusResponse = await api.get<{ assessed: boolean }>(
+              `/students/${student.id}/assessment-status`,
+              {
+                params: { classroomId: parsedClassroomId }
+              }
+            );
             return {
               ...student,
               assessedToday: statusResponse.data.assessed,
@@ -928,5 +936,32 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: '#FFFFFF',
+  },
+  floatingButtonsContainer: {
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    flexDirection: 'column',
+    gap: 12,
+  },
+  floatingButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: '#8B5CF6',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#8B5CF6',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  secondaryFloatingButton: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 2,
+    borderColor: '#8B5CF6',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
   },
 });
