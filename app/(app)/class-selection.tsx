@@ -384,11 +384,8 @@ export default function ClassSelectionScreen() {
     <>
       {/* Header da Página */}
       <View style={styles.pageHeader}>
-        <View style={styles.pageIconContainer}>
-          <BookOpen size={32} color="#FFFFFF" />
-        </View>
         <Text style={styles.pageTitle}>
-          {schoolName || 'Minhas Turmas'}
+          {schoolName || 'Gerenciamento da Escola'}
         </Text>
         <Text style={styles.pageSubtitle}>
           {isManager 
