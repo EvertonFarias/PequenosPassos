@@ -1,5 +1,6 @@
 // context/AuthContext.tsx
 import api from '@/lib/api';
+import axios from 'axios';
 import { useRouter, useSegments } from 'expo-router';
 import { saveToken, getToken, removeToken } from '@/lib/auth';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -65,17 +66,66 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       // 1. Buscar dados do usuário (VALIDA O TOKEN)
-      const userResponse = await api.get<UserDTO>('/users/me'); 
-      setUser(userResponse.data);
+      let userResponse;
+      try {
+        userResponse = await api.get<UserDTO>('/users/me');
+        setUser(userResponse.data);
+      } catch (err: any) {
+        const status = err?.response?.status;
+        // Se o token expirou ou foi rejeitado com 401/403, tentar renovar usando refresh token
+        if (status === 401 || status === 403) {
+          try {
+            const refreshToken = await AsyncStorage.getItem('@refresh_token');
+            if (refreshToken) {
+              const refreshResp = await axios.post(`${(api.defaults.baseURL || '').replace(/\/$/, '')}/auth/refresh`, { refreshToken });
+              const newToken = (refreshResp.data as any)?.token;
+              if (newToken) {
+                await saveToken(newToken);
+                // tentar novamente
+                userResponse = await api.get<UserDTO>('/users/me');
+                setUser(userResponse.data);
+              } else {
+                throw err;
+              }
+            } else {
+              throw err;
+            }
+          } catch (refreshErr) {
+            console.warn('Falha ao renovar token durante loadUserData:', refreshErr);
+            // limpeza segura
+            await removeToken();
+            await AsyncStorage.removeItem('@refresh_token');
+            setUser(null);
+            setSchools([]);
+            setIsLoadingSchools(false);
+            return;
+          }
+        } else {
+          throw err;
+        }
+      }
 
       // 2. Buscar escolas do usuário (se não for SuperAdmin)
       if (userResponse.data.role === 'USER') {
         setIsLoadingSchools(true);
         try {
-          const schoolsResponse = await api.get<SchoolContextDTO[]>('/users/me/schools');
+          // Use the same endpoint used after sign-in for consistency
+          const schoolsResponse = await api.get<SchoolContextDTO[]>('/schools/me');
           setSchools(schoolsResponse.data);
-        } catch (schoolError) {
+        } catch (schoolError: any) {
           console.error('Erro ao carregar escolas:', schoolError);
+          // If we got 403/401 even after refresh attempt above, clear state and tokens
+          const status = schoolError?.response?.status;
+          if (status === 401 || status === 403) {
+            try {
+              await removeToken();
+              await AsyncStorage.removeItem('@refresh_token');
+            } catch (err) { /* ignore */ }
+            setUser(null);
+            setSchools([]);
+            setIsLoadingSchools(false);
+            return;
+          }
           setSchools([]);
         } finally {
           setIsLoadingSchools(false);
@@ -168,7 +218,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.log('✅ Usuário recebido:', userResponse.data);
       setUser(userResponse.data);
 
-      // Buscar escolas
+  // Buscar escolas
       let userSchools: SchoolContextDTO[] = [];
       if (userResponse.data.role === 'USER') {
         console.log('🏫 Buscando escolas...');
@@ -182,6 +232,23 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       
       // Redirecionar
       console.log('🔀 Redirecionando...');
+      // Após login, checar se existe um token de convite pendente e aplicar
+      try {
+        const pending = await AsyncStorage.getItem('@pending_invite_token');
+        if (pending) {
+          try {
+            await api.post('/invites/accept', { token: pending });
+            console.log('✅ Convite aplicado após login');
+            await AsyncStorage.removeItem('@pending_invite_token');
+            // atualizar usuário/escolas
+            try { const refreshed = await api.get<UserDTO>('/users/me'); setUser(refreshed.data); } catch(e){/*ignore*/}
+          } catch (e) {
+            console.warn('Falha ao aplicar convite pendente:', e);
+          }
+        }
+      } catch (e) {
+        console.warn('Erro ao checar convite pendente:', e);
+      }
       if (userResponse.data.role === 'SUPER_ADMIN') {
         router.replace({ pathname: '/(app)/(superadmin)/dashboard' } as any);
       } else {

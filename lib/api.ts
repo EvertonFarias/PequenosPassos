@@ -57,11 +57,16 @@ api.interceptors.response.use(
     const originalRequest = error.config;
     
     // Se for erro 401 E NÃO for o endpoint de login/refresh
-    const is401 = error?.response?.status === 401;
+    const status = error?.response?.status;
     const isLoginEndpoint = error?.config?.url?.includes('/auth/login');
     const isRefreshEndpoint = error?.config?.url?.includes('/auth/refresh');
-    
-    if (is401 && !isLoginEndpoint && !isRefreshEndpoint && !originalRequest._retry) {
+
+    // Treat 401 as auth error. Also treat 403 as auth error only when the original request
+    // included an Authorization header (to avoid triggering refresh on permission errors).
+    const hasAuthHeader = !!(originalRequest.headers && (originalRequest.headers.Authorization || originalRequest.headers.authorization));
+    const isAuthError = (status === 401) || (status === 403 && hasAuthHeader);
+
+    if (isAuthError && !isLoginEndpoint && !isRefreshEndpoint && !originalRequest._retry) {
       if (isRefreshing) {
         // Se já está renovando, adiciona na fila
         return new Promise((resolve, reject) => {
@@ -90,7 +95,7 @@ api.interceptors.response.use(
           refreshToken
         });
 
-        const { token: newAccessToken } = response.data as { token: string; refreshToken: string };
+  const { token: newAccessToken } = response.data as { token: string; refreshToken: string };
         
         // Salvar novo access token
         await saveToken(newAccessToken);
@@ -110,7 +115,7 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
         isRefreshing = false;
         
-        // Se falhou ao renovar, fazer logout
+  // Se falhou ao renovar, fazer logout
         console.warn('🔒 Falha ao renovar token. Fazendo logout...');
         await removeToken();
         await AsyncStorage.removeItem('@refresh_token');
