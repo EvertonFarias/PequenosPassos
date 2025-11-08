@@ -61,7 +61,6 @@ export default function ClassSelectionScreen() {
   const [showMenuForClass, setShowMenuForClass] = useState<number | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Determina a role do usuário na escola
   const schoolRole = useMemo(() => {
     if (parsedSchoolId === null || !Array.isArray(schools)) return null;
     const context = schools.find(s => s.schoolId === parsedSchoolId);
@@ -71,7 +70,6 @@ export default function ClassSelectionScreen() {
   const isManager = schoolRole === 'SCHOOL_MANAGER';
   const isTeacher = schoolRole === 'TEACHER';
 
-  // Função para carregar turmas
   const fetchClassrooms = useCallback(async () => {
     if (parsedSchoolId === null) {
       setError('ID da escola não fornecido.');
@@ -92,19 +90,16 @@ export default function ClassSelectionScreen() {
     }
   }, [parsedSchoolId]);
 
-  // Carrega as turmas quando monta o componente
   useEffect(() => {
     fetchClassrooms();
   }, [fetchClassrooms]);
 
-  // Recarrega as turmas quando a tela volta ao foco
   useFocusEffect(
     useCallback(() => {
       fetchClassrooms();
     }, [fetchClassrooms])
   );
 
-  // Mostra apenas turmas ativas
   const activeClasses = useMemo(() => {
     return classes.filter(c => c.active !== false);
   }, [classes]);
@@ -127,7 +122,6 @@ export default function ClassSelectionScreen() {
     setShowMenuForClass(null);
 
     const action = classItem.active !== false ? 'deactivate' : 'reactivate';
-    const actionPt = classItem.active !== false ? 'desativar' : 'reativar';
     const actionTitle = classItem.active !== false ? 'Desativar Turma' : 'Reativar Turma';
     
     Alert.alert(
@@ -143,19 +137,15 @@ export default function ClassSelectionScreen() {
           onPress: async () => {
             try {
               setIsProcessing(true);
-              
               await api.patch(`/classrooms/${classItem.id}/${action}`);
-              
-              // Recarregar a lista
               await fetchClassrooms();
-              
               Alert.alert(
                 'Sucesso!',
                 `Turma ${classItem.active !== false ? 'desativada' : 'reativada'} com sucesso.`
               );
             } catch (error: any) {
-              console.error(`Erro ao ${actionPt} turma:`, error);
-              Alert.alert('Erro', `Não foi possível ${actionPt} a turma.`);
+              console.error(`Erro ao ${action} turma:`, error);
+              Alert.alert('Erro', `Não foi possível ${action === 'deactivate' ? 'desativar' : 'reativar'} a turma.`);
             } finally {
               setIsProcessing(false);
             }
@@ -199,7 +189,6 @@ export default function ClassSelectionScreen() {
   };
 
   const handleManageTeachers = () => {
-    // TODO: Implementar gestão de professores
     console.log('Gerenciar professores');
   };
 
@@ -303,7 +292,6 @@ export default function ClassSelectionScreen() {
               )}
             </View>
             
-            {/* Menu Button - Only for Managers */}
             {isManager && (
               <TouchableOpacity
                 style={styles.menuButton}
@@ -326,10 +314,8 @@ export default function ClassSelectionScreen() {
           </View>
         </TouchableOpacity>
 
-        {/* Dropdown Menu */}
         {isManager && showMenuForClass === item.id && (
           <>
-            {/* Backdrop transparente */}
             <TouchableOpacity 
               style={styles.menuBackdrop}
               activeOpacity={1}
@@ -384,6 +370,9 @@ export default function ClassSelectionScreen() {
     <>
       {/* Header da Página */}
       <View style={styles.pageHeader}>
+        <View style={styles.pageIconContainer}>
+          <BookOpen size={32} color="#FFFFFF" />
+        </View>
         <Text style={styles.pageTitle}>
           {schoolName || 'Gerenciamento da Escola'}
         </Text>
@@ -394,136 +383,107 @@ export default function ClassSelectionScreen() {
         </Text>
       </View>
 
-      {/* Stats Card - Apenas para Gestor */}
-      {isManager && (
-        <View style={styles.statsCard}>
-          <View style={styles.statItem}>
-            <View style={styles.statIconContainer}>
-              <BookOpen size={20} color="#8B5CF6" />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={styles.statValue}>{classes.length}</Text>
-              <Text style={styles.statLabel}>Turmas</Text>
-            </View>
+      {/* Stats Card */}
+      <View style={styles.statsCard}>
+        <View style={styles.statItem}>
+          <View style={styles.statIconContainer}>
+            <BookOpen size={20} color="#8B5CF6" />
           </View>
-          
-          <View style={styles.statDivider} />
-          
-          <View style={styles.statItem}>
-            <View style={styles.statIconContainer}>
-              <Users size={20} color="#8B5CF6" />
-            </View>
-            <View style={styles.statContent}>
-              <Text style={styles.statValue}>
-                {classes.reduce((sum, c) => sum + (c.studentCount || 0), 0)}
-              </Text>
-              <Text style={styles.statLabel}>Alunos</Text>
-            </View>
+          <View style={styles.statContent}>
+            <Text style={styles.statValue}>{classes.length}</Text>
+            <Text style={styles.statLabel}>Turmas</Text>
           </View>
         </View>
-      )}
-
-      {/* Quick Actions - Apenas para Gestor */}
-      {isManager && (
-        <View style={styles.actionsSection}>
-          <Text style={styles.sectionTitle}>Ações Rápidas</Text>
-          
-          <View style={styles.actionsGrid}>
-            <TouchableOpacity 
-              style={styles.actionCard}
-              onPress={handleManageClassrooms}
-            >
-              <View style={[styles.actionIconContainer, { backgroundColor: '#F3E8FF' }]}>
-                <BookOpen size={20} color="#8B5CF6" />
+        
+        {isManager && (
+          <>
+            <View style={styles.statDivider} />
+            
+            <View style={styles.statItem}>
+              <View style={styles.statIconContainer}>
+                <Users size={20} color="#8B5CF6" />
               </View>
-              <Text style={styles.actionTitle}>Gerenciar Turmas</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.actionCard}
-              onPress={handleManageStudents}
-            >
-              <View style={[styles.actionIconContainer, { backgroundColor: '#DBEAFE' }]}>
-                <UserPlus size={20} color="#2563EB" />
+              <View style={styles.statContent}>
+                <Text style={styles.statValue}>
+                  {classes.reduce((sum, c) => sum + (c.studentCount || 0), 0)}
+                </Text>
+                <Text style={styles.statLabel}>Alunos</Text>
               </View>
-              <Text style={styles.actionTitle}>Alunos</Text>
-            </TouchableOpacity>
+            </View>
+          </>
+        )}
+      </View>
 
-            <TouchableOpacity 
-              style={styles.actionCard}
-              onPress={handleManageTeachers}
-            >
-              <View style={[styles.actionIconContainer, { backgroundColor: '#FEF3C7' }]}>
-                <GraduationCap size={20} color="#D97706" />
-              </View>
-              <Text style={styles.actionTitle}>Professores</Text>
-            </TouchableOpacity>
+      {/* Quick Actions */}
+      <View style={styles.actionsSection}>
+        <Text style={styles.sectionTitle}>Ações Rápidas</Text>
+        
+        <View style={styles.actionsGrid}>
+          {isManager && (
+            <>
+              <TouchableOpacity 
+                style={styles.actionCard}
+                onPress={handleManageClassrooms}
+              >
+                <View style={[styles.actionIconContainer, { backgroundColor: '#F3E8FF' }]}>
+                  <BookOpen size={20} color="#8B5CF6" />
+                </View>
+                <Text style={styles.actionTitle}>Gerenciar Turmas</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.actionCard}
-              onPress={handleManageMetrics}
-            >
-              <View style={[styles.actionIconContainer, { backgroundColor: '#EDE9FE' }]}>
-                <ClipboardList size={20} color="#7C3AED" />
-              </View>
-              <Text style={styles.actionTitle}>Métricas</Text>
-            </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionCard}
+                onPress={handleManageStudents}
+              >
+                <View style={[styles.actionIconContainer, { backgroundColor: '#DBEAFE' }]}>
+                  <UserPlus size={20} color="#2563EB" />
+                </View>
+                <Text style={styles.actionTitle}>Alunos</Text>
+              </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.actionCard}
-              onPress={handleViewHistory}
-            >
-              <View style={[styles.actionIconContainer, { backgroundColor: '#FEE2E2' }]}>
-                <History size={20} color="#DC2626" />
-              </View>
-              <Text style={styles.actionTitle}>Histórico de Avaliações</Text>
-            </TouchableOpacity>
+              <TouchableOpacity 
+                style={styles.actionCard}
+                onPress={handleManageTeachers}
+              >
+                <View style={[styles.actionIconContainer, { backgroundColor: '#FEF3C7' }]}>
+                  <GraduationCap size={20} color="#D97706" />
+                </View>
+                <Text style={styles.actionTitle}>Professores</Text>
+              </TouchableOpacity>
+            </>
+          )}
 
-            <TouchableOpacity 
-              style={styles.actionCard}
-              onPress={handleViewReports}
-            >
-              <View style={[styles.actionIconContainer, { backgroundColor: '#D1FAE5' }]}>
-                <BarChart3 size={20} color="#059669" />
-              </View>
-              <Text style={styles.actionTitle}>Relatórios</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity 
+            style={styles.actionCard}
+            onPress={handleManageMetrics}
+          >
+            <View style={[styles.actionIconContainer, { backgroundColor: '#EDE9FE' }]}>
+              <ClipboardList size={20} color="#7C3AED" />
+            </View>
+            <Text style={styles.actionTitle}>Métricas</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.actionCard}
+            onPress={handleViewHistory}
+          >
+            <View style={[styles.actionIconContainer, { backgroundColor: '#FEE2E2' }]}>
+              <History size={20} color="#DC2626" />
+            </View>
+            <Text style={styles.actionTitle}>Histórico</Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.actionCard}
+            onPress={handleViewReports}
+          >
+            <View style={[styles.actionIconContainer, { backgroundColor: '#D1FAE5' }]}>
+              <BarChart3 size={20} color="#059669" />
+            </View>
+            <Text style={styles.actionTitle}>Relatórios</Text>
+          </TouchableOpacity>
         </View>
-      )}
-
-      {/* Actions Row - Professor (simplificado) */}
-      {isTeacher && (
-        <View style={styles.teacherActionsSection}>
-          <View style={styles.teacherActionsRow}>
-            <TouchableOpacity 
-              style={styles.teacherActionButton}
-              onPress={handleViewHistory}
-            >
-              <History size={20} color="#FFFFFF" />
-              <Text style={styles.teacherActionText}>Histórico de Avaliações</Text>
-            </TouchableOpacity>
-          </View>
-
-          <View style={styles.teacherActionsRow}>
-            <TouchableOpacity 
-              style={[styles.teacherActionButton, { backgroundColor: '#059669' }]}
-              onPress={handleViewReports}
-            >
-              <BarChart3 size={20} color="#FFFFFF" />
-              <Text style={styles.teacherActionText}>Relatórios</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={[styles.teacherActionButton, { backgroundColor: '#7C3AED' }]}
-              onPress={handleManageMetrics}
-            >
-              <ClipboardList size={20} color="#FFFFFF" />
-              <Text style={styles.teacherActionText}>Métricas</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      )}
+      </View>
 
       {/* Título da lista */}
       <View style={styles.listHeader}>
@@ -738,35 +698,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1F2937',
     textAlign: 'center',
-  },
-  teacherActionsSection: {
-    paddingHorizontal: 16,
-    marginBottom: 20,
-    gap: 12,
-  },
-  teacherActionsRow: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  teacherActionButton: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#DC2626',
-    borderRadius: 12,
-    paddingVertical: 14,
-    gap: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
-  },
-  teacherActionText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: '#FFFFFF',
   },
   listHeader: {
     flexDirection: 'row',
