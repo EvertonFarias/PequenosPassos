@@ -94,7 +94,7 @@ export default function AssessmentHistoryScreen() {
       setHasMore(!response.data.last);
       setPage(pageNum);
     } catch (error) {
-      console.error('Erro ao carregar histórico:', error);
+      console.log('Erro ao carregar histórico:', error);
       toast.showToast('Erro ao carregar histórico de avaliações', 'error');
     } finally {
       setIsLoading(false);

@@ -96,7 +96,7 @@ export default function StudentListScreen() {
       const response = await api.get<Classroom[]>(`/schools/${parsedSchoolId}/classrooms`);
       setAllClassrooms(response.data || []);
     } catch (error) {
-      console.error('Erro ao carregar turmas:', error);
+      console.log('Erro ao carregar turmas:', error);
     }
   };
 
@@ -127,7 +127,7 @@ export default function StudentListScreen() {
               const classroomsResponse = await api.get<Classroom[]>(`/students/${student.id}/classrooms`);
               return { ...student, classrooms: classroomsResponse.data || [] };
             } catch (error) {
-              console.error(`Erro ao buscar turmas do aluno ${student.id}:`, error);
+              console.log(`Erro ao buscar turmas do aluno ${student.id}:`, error);
               return { ...student, classrooms: [] };
             }
           })
@@ -152,7 +152,7 @@ export default function StudentListScreen() {
       toast.showToast('Aluno vinculado à turma com sucesso!', 'success');
       setAvailableStudents(prev => prev.filter(s => s.id !== studentId));
     } catch (error: any) {
-      console.error('Erro ao vincular aluno:', error);
+      console.log('Erro ao vincular aluno:', error);
       const message = error.response?.data?.message || 'Erro ao vincular aluno';
       toast.showToast(message, 'error');
     }
@@ -178,7 +178,7 @@ export default function StudentListScreen() {
       fetchStudents();
       setShowClassroomsModal(false);
     } catch (error: any) {
-      console.error('Erro ao vincular aluno:', error);
+      console.log('Erro ao vincular aluno:', error);
       toast.showToast('Erro ao vincular aluno à turma', 'error');
     }
   };
@@ -200,7 +200,7 @@ export default function StudentListScreen() {
               toast.showToast('Aluno desvinculado da turma', 'success');
               fetchStudents();
             } catch (error: any) {
-              console.error('Erro ao desvincular aluno:', error);
+              console.log('Erro ao desvincular aluno:', error);
               toast.showToast('Erro ao desvincular aluno', 'error');
             }
           },
@@ -234,7 +234,7 @@ export default function StudentListScreen() {
               toast.showToast('Aluno desativado com sucesso', 'success');
               fetchStudents();
             } catch (error: any) {
-              console.error('Erro ao desativar aluno:', error);
+              console.log('Erro ao desativar aluno:', error);
               toast.showToast('Erro ao desativar aluno', 'error');
             }
           },
@@ -257,7 +257,7 @@ export default function StudentListScreen() {
               toast.showToast('Aluno reativado com sucesso', 'success');
               fetchStudents();
             } catch (error: any) {
-              console.error('Erro ao reativar aluno:', error);
+              console.log('Erro ao reativar aluno:', error);
               toast.showToast('Erro ao reativar aluno', 'error');
             }
           }

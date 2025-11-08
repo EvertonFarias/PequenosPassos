@@ -110,8 +110,8 @@ export default function StudentEvaluationModal({
           setOriginalDate(null);
         }
       } catch (e: any) {
-        console.error('❌ Falha ao carregar dados:', e);
-        console.error('Erro completo:', e.response?.data || e.message);
+        console.log('❌ Falha ao carregar dados:', e);
+        console.log('Erro completo:', e.response?.data || e.message);
         setError(isEditMode ? 'Falha ao carregar avaliação.' : 'Falha ao carregar métricas da turma.');
       } finally {
         console.log('✅ Loading finalizado. Total de métricas:', metrics.length);
@@ -162,7 +162,7 @@ export default function StudentEvaluationModal({
       onSuccess();
       handleClose();
     } catch (e: any) {
-      console.error('Falha ao salvar avaliação:', e);
+      console.log('Falha ao salvar avaliação:', e);
       const errorMessage = e.response?.data?.message || 'Falha ao salvar a avaliação.';
       setError(errorMessage);
     } finally {

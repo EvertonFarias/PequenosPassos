@@ -1,6 +1,7 @@
 // app/login.tsx
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'expo-router';
 import {
   ActivityIndicator,
   Animated,
@@ -14,12 +15,15 @@ import {
   ScrollView,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-// import api from './lib/api'; // Não precisamos mais disto aqui
+import api from '../lib/api';
+import { useToast } from '../hooks/useToast';
+import { Toast } from '../components/Toast';
 import { useAuth } from '../context/AuthContext'; // <- NOSSO NOVO HOOK
 
 export default function LoginScreen() {
   // const router = useRouter(); // Não precisamos mais disto aqui
   const { signIn } = useAuth(); // <- PEGA A FUNÇÃO DO CONTEXTO
+  const router = useRouter();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -28,6 +32,8 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingCredentials, setIsLoadingCredentials] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
+  const [showResendPrompt, setShowResendPrompt] = useState(false);
 
   // --- Carregar credenciais salvas ao montar o componente ---
   useEffect(() => {
@@ -46,7 +52,7 @@ export default function LoginScreen() {
         setRememberMe(true);
       }
     } catch (error) {
-      console.error('Erro ao carregar credenciais salvas:', error);
+      console.log('Erro ao carregar credenciais salvas:', error);
     } finally {
       setIsLoadingCredentials(false);
     }
@@ -64,7 +70,7 @@ export default function LoginScreen() {
         await AsyncStorage.removeItem('@remember_me');
       }
     } catch (error) {
-      console.error('Erro ao salvar credenciais:', error);
+      console.log('Erro ao salvar credenciais:', error);
     }
   };
 
@@ -146,10 +152,68 @@ export default function LoginScreen() {
       // Não precisamos mais do 'router.replace' aqui.
 
     } catch (e: any) {
-      console.error('Login error:', e);
-      setError(e.message || 'Erro ao fazer login. Verifique suas credenciais.');
+      // Log detalhado para desenvolvedor
+      console.log('Login error:', e);
+
+      const status = e?.response?.status;
+      const serverData = e?.response?.data;
+
+      // Extrair mensagem bruta do servidor de forma segura
+      let rawMsg = '';
+      try {
+        if (typeof serverData === 'string') rawMsg = serverData;
+        else if (serverData && typeof serverData === 'object') rawMsg = serverData.message || serverData.error || JSON.stringify(serverData);
+        else rawMsg = e?.message || '';
+      } catch (ex) {
+        rawMsg = String(serverData);
+      }
+
+      // Mapear para mensagens amigáveis ao usuário
+      let friendly = 'Erro ao fazer login. Tente novamente.';
+      if (status === 400 || status === 401) {
+        friendly = 'E-mail ou senha incorretos.';
+      } else if (status === 403) {
+        // Verificação de e-mail não realizada
+        if (rawMsg.toLowerCase().includes('verific') || rawMsg.toLowerCase().includes('verificado')) {
+          friendly = 'E-mail não verificado. Verifique seu e-mail antes de acessar o sistema.';
+          setShowResendPrompt(true);
+        } else {
+          friendly = 'Acesso negado.';
+        }
+      } else if (status === 422) {
+        friendly = 'Dados inválidos. Verifique e tente novamente.';
+      } else if (status >= 500) {
+        friendly = 'Erro no servidor. Tente novamente mais tarde.';
+      }
+
+      // Não exibir mensagens muito longas ou técnicas para o usuário
+      setError(friendly);
+
+      // Ainda assim, deixar o detalhe nos logs para depuração
+      console.debug('Server login raw message (for debugging):', rawMsg);
     } finally {
       setIsLoading(false);
+    }
+  }
+
+  async function resendVerificationEmail(emailAddress: string) {
+    if (!emailAddress) {
+      toast.showToast('Informe seu e-mail antes de reenviar o código.', 'warning');
+      return;
+    }
+
+    try {
+      await api.post('/auth/resend-verification', { email: emailAddress });
+      toast.success('E-mail de verificação enviado. Cheque sua caixa de entrada.');
+      setShowResendPrompt(false);
+    } catch (err: any) {
+      console.log('Erro ao reenviar verificação:', err);
+      const status = err?.response?.status;
+      let friendly = 'Erro ao reenviar verificação. Tente novamente mais tarde.';
+      if (status === 404) friendly = 'E-mail não encontrado.';
+      else if (status === 429) friendly = 'Muitas tentativas. Aguarde e tente novamente.';
+      // preserve a short debug log but avoid showing raw server dumps to user
+      toast.error(friendly);
     }
   }
 
@@ -170,6 +234,8 @@ export default function LoginScreen() {
       style={styles.container}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
+      {/* Make toast available on the login screen so messages from useToast are visible */}
+      <Toast visible={toast.toast.visible} message={toast.toast.message} type={toast.toast.type} onHide={toast.hideToast} />
       <ScrollView 
         style={styles.container}
         contentContainerStyle={{ flexGrow: 1 }}
@@ -247,12 +313,20 @@ export default function LoginScreen() {
  
          {/* Login Card */}
          <View style={styles.card}>
-           {error && (
-             <View style={styles.errorContainer}>
-               <Ionicons name="alert-circle" size={20} color="#DC2626" />
-               <Text style={styles.errorText}>{error}</Text>
-             </View>
-           )}
+          {error && (
+            <View style={styles.errorContainer}>
+              <Ionicons name="alert-circle" size={20} color="#DC2626" />
+              <Text style={styles.errorText}>{error}</Text>
+            </View>
+          )}
+
+          {showResendPrompt && (
+            <View style={{ alignItems: 'center', marginTop: 8 }}>
+              <TouchableOpacity style={{ marginBottom: 12 }} onPress={() => resendVerificationEmail(email)}>
+                <Text style={{ color: '#8B5CF6', fontWeight: '700' }}>Reenviar e-mail de verificação</Text>
+              </TouchableOpacity>
+            </View>
+          )}
  
            {/* Email Input */}
            <View style={styles.inputGroup}>
@@ -338,7 +412,7 @@ export default function LoginScreen() {
                <Text style={styles.rememberText}>Lembrar de mim</Text>
              </TouchableOpacity>
  
-             <TouchableOpacity style={styles.forgotButton}>
+             <TouchableOpacity style={styles.forgotButton} onPress={() => router.push('/forgot-password')}>
                <Text style={styles.forgotPassword}>Esqueci a senha</Text>
              </TouchableOpacity>
            </View>
@@ -365,6 +439,11 @@ export default function LoginScreen() {
          </View>
  
          {/* Footer */}
+        <View style={styles.footer}>
+          <TouchableOpacity onPress={() => router.push('/register')} style={{ marginTop: 12 }}>
+            <Text style={{ color: '#6B7280', fontSize: 14 }}>Ainda não tem conta? <Text style={{ color: '#8B5CF6', fontWeight: '700' }}>Registre-se</Text></Text>
+          </TouchableOpacity>
+        </View>
 
          {/* --- Fim do seu Design --- */}
       </View>
@@ -372,7 +451,6 @@ export default function LoginScreen() {
     </KeyboardAvoidingView>
   );
 }
-
 // --- Seus Estilos (mantidos 100%) ---
 const styles = StyleSheet.create({
   container: {

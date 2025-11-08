@@ -61,6 +61,9 @@ export default function ClassSelectionScreen() {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const schoolRole = useMemo(() => {
+    // If the current user is SUPER_ADMIN treat them as a school manager
+    if (user?.role === 'SUPER_ADMIN') return 'SCHOOL_MANAGER';
+
     if (parsedSchoolId === null || !Array.isArray(schools)) return null;
     const context = schools.find(s => s.schoolId === parsedSchoolId);
     return context?.role || null;
@@ -82,7 +85,7 @@ export default function ClassSelectionScreen() {
       const response = await api.get<ClassroomDTO[]>(`/schools/${parsedSchoolId}/classrooms`);
       setClasses(response.data ?? []);
     } catch (e: any) {
-      console.error('Falha ao carregar as turmas:', e);
+      console.log('Falha ao carregar as turmas:', e);
       setError('Falha ao carregar as turmas.');
     } finally {
       setIsLoading(false);
@@ -143,7 +146,7 @@ export default function ClassSelectionScreen() {
                 `Turma ${classItem.active !== false ? 'desativada' : 'reativada'} com sucesso.`
               );
             } catch (error: any) {
-              console.error(`Erro ao ${action} turma:`, error);
+              console.log(`Erro ao ${action} turma:`, error);
               Alert.alert('Erro', `Não foi possível ${action === 'deactivate' ? 'desativar' : 'reativar'} a turma.`);
             } finally {
               setIsProcessing(false);
@@ -423,7 +426,7 @@ export default function ClassSelectionScreen() {
         
         <View style={styles.actionsGrid}>
           {isManager && (
-            <>
+              <>
               <TouchableOpacity 
                 style={styles.actionCard}
                 onPress={handleManageClassrooms}
@@ -445,18 +448,20 @@ export default function ClassSelectionScreen() {
                 </View>
                 <Text style={styles.actionTitle}>Alunos</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity 
-                style={styles.actionCard}
-                onPress={handleManageTeachers}
-                activeOpacity={0.7}
-              >
-                <View style={[styles.actionIconContainer, { backgroundColor: '#FEF3C7' }]}>
-                  <GraduationCap size={22} color="#D97706" strokeWidth={2.5} />
-                </View>
-                <Text style={styles.actionTitle}>Professores</Text>
-              </TouchableOpacity>
             </>
+          )}
+
+          {(isManager || isTeacher) && (
+            <TouchableOpacity 
+              style={styles.actionCard}
+              onPress={handleManageTeachers}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.actionIconContainer, { backgroundColor: '#FEF3C7' }]}>
+                <GraduationCap size={22} color="#D97706" strokeWidth={2.5} />
+              </View>
+              <Text style={styles.actionTitle}>Professores</Text>
+            </TouchableOpacity>
           )}
 
           <TouchableOpacity 

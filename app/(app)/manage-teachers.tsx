@@ -25,6 +25,35 @@ export default function ManageTeachersScreen() {
     fetchTeachers();
   }, []);
 
+  // Helpers to determine permissions and sorting
+  const isCurrentUserManager = () => {
+    if (!user) return false;
+    if (user.role === 'SUPER_ADMIN') return true;
+    const me = teachers.find(t => t.id === user.id);
+    if (!me) return false;
+    const role = getTeacherRole(me);
+    return role === 'MANAGER';
+  };
+
+  const getVisibleTeachers = () => {
+    // If current user is manager or superadmin, show all fetched users.
+    const showAll = isCurrentUserManager();
+    const list = teachers.filter(t => {
+      if (showAll) return true;
+      const r = getTeacherRole(t);
+      return r === 'TEACHER' || r === 'MANAGER';
+    });
+
+    // Sort so the current user (if present) is always at the top
+    const sorted = list.slice().sort((a, b) => {
+      if (!user) return 0;
+      if (a.id === user.id) return -1;
+      if (b.id === user.id) return 1;
+      return 0;
+    });
+    return sorted;
+  };
+
   const fetchInvites = async () => {
     if (!parsedSchoolId) return;
     try {
@@ -66,7 +95,7 @@ export default function ManageTeachersScreen() {
       Alert.alert('Convite enviado', token ? `Token: ${token}` : 'Convite enviado com sucesso');
       await fetchInvites();
     } catch (err: any) {
-      console.error('Erro ao enviar convite', err);
+      console.log('Erro ao enviar convite', err);
       Alert.alert('Erro', err?.response?.data || err?.message || 'Falha ao enviar convite');
     } finally {
       setIsSubmitting(false);
@@ -127,9 +156,11 @@ export default function ManageTeachersScreen() {
       { text: 'Sair', style: 'destructive', onPress: async () => {
         try {
           await api.post(`/schools/${parsedSchoolId}/teachers/me/leave`);
+          // Refresh list then redirect the user to school selection
           await fetchTeachers();
+          router.replace('/(app)/school-selection');
         } catch (err: any) {
-          console.error('Erro ao sair da escola', err);
+          console.log('Erro ao sair da escola', err);
           Alert.alert('Erro', err?.response?.data || err?.message || 'Falha ao sair da escola');
         }
       } }
@@ -145,7 +176,7 @@ export default function ManageTeachersScreen() {
           await api.post(`/invites/${invite.id}/cancel`);
           await fetchInvites();
         } catch (err: any) {
-          console.error('Erro ao cancelar convite', err);
+          console.log('Erro ao cancelar convite', err);
           Alert.alert('Erro', err?.response?.data || err?.message || 'Falha ao cancelar convite');
         }
       } }
@@ -156,6 +187,7 @@ export default function ManageTeachersScreen() {
     const role = getTeacherRole(item);
     const isManager = role === 'MANAGER';
     const isCurrentUser = user?.id === item.id;
+    const viewerIsManager = isCurrentUserManager();
     
     return (
       <View style={[styles.card, !item.active && styles.cardInactive]}>
@@ -198,41 +230,44 @@ export default function ManageTeachersScreen() {
               <Text style={[styles.actionButtonText, styles.actionButtonTextDanger]}>Sair da escola</Text>
             </TouchableOpacity>
           ) : (
-            <>
-              <TouchableOpacity
-                style={[styles.actionButton, styles.actionButtonSecondary]}
-                onPress={() => handleToggleRole(item)}
-              >
-                {isManager ? (
-                  <Shield size={16} color="#6B7280" />
-                ) : (
-                  <ShieldCheck size={16} color="#8B5CF6" />
-                )}
-                <Text style={[styles.actionButtonText, !isManager && styles.actionButtonTextPrimary]}>
-                  {isManager ? 'Tornar Professor' : 'Tornar Gestor'}
-                </Text>
-              </TouchableOpacity>
+            // Only show manager actions to viewers who are managers. Teachers (non-managers) see no action buttons for other users.
+            viewerIsManager ? (
+              <>
+                <TouchableOpacity
+                  style={[styles.actionButton, styles.actionButtonSecondary]}
+                  onPress={() => handleToggleRole(item)}
+                >
+                  {isManager ? (
+                    <Shield size={16} color="#6B7280" />
+                  ) : (
+                    <ShieldCheck size={16} color="#8B5CF6" />
+                  )}
+                  <Text style={[styles.actionButtonText, !isManager && styles.actionButtonTextPrimary]}>
+                    {isManager ? 'Tornar Professor' : 'Tornar Gestor'}
+                  </Text>
+                </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.actionButton,
-                  item.active ? styles.actionButtonDanger : styles.actionButtonSuccess
-                ]}
-                onPress={() => handleToggleActive(item)}
-              >
-                {item.active ? (
-                  <UserX size={16} color="#EF4444" />
-                ) : (
-                  <UserCheck size={16} color="#22C55E" />
-                )}
-                <Text style={[
-                  styles.actionButtonText,
-                  item.active ? styles.actionButtonTextDanger : styles.actionButtonTextSuccess
-                ]}>
-                  {item.active ? 'Desativar' : 'Ativar'}
-                </Text>
-              </TouchableOpacity>
-            </>
+                <TouchableOpacity
+                  style={[
+                    styles.actionButton,
+                    item.active ? styles.actionButtonDanger : styles.actionButtonSuccess
+                  ]}
+                  onPress={() => handleToggleActive(item)}
+                >
+                  {item.active ? (
+                    <UserX size={16} color="#EF4444" />
+                  ) : (
+                    <UserCheck size={16} color="#22C55E" />
+                  )}
+                  <Text style={[
+                    styles.actionButtonText,
+                    item.active ? styles.actionButtonTextDanger : styles.actionButtonTextSuccess
+                  ]}>
+                    {item.active ? 'Desativar' : 'Ativar'}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : null
           )}
         </View>
       </View>
@@ -286,29 +321,31 @@ export default function ManageTeachersScreen() {
               <Text style={styles.pageTitle}>Equipe Pedagógica</Text>
               <Text style={styles.pageSubtitle}>{schoolName || 'Escola'}</Text>
             </View>
-            <TouchableOpacity style={styles.inviteButton} onPress={handleOpenInviteModal}>
-              <Plus size={20} color="#fff" strokeWidth={2.5} />
-              <Text style={styles.inviteButtonText}>Convidar</Text>
-            </TouchableOpacity>
+            {isCurrentUserManager() && (
+              <TouchableOpacity style={styles.inviteButton} onPress={handleOpenInviteModal}>
+                <Plus size={20} color="#fff" strokeWidth={2.5} />
+                <Text style={styles.inviteButtonText}>Convidar</Text>
+              </TouchableOpacity>
+            )}
           </View>
 
           {/* Lista de professores */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
-              Professores Ativos ({teachers.filter(t => t.active).length})
+              Professores Ativos ({getVisibleTeachers().filter(t => t.active).length})
             </Text>
             {isLoadingTeachers ? (
               <View style={styles.loadingContainer}>
                 <ActivityIndicator size="large" color="#8B5CF6" />
               </View>
-            ) : teachers.filter(t => t.active).length === 0 ? (
+            ) : getVisibleTeachers().filter(t => t.active).length === 0 ? (
               <View style={styles.emptyState}>
                 <Shield size={48} color="#D1D5DB" />
                 <Text style={styles.emptyStateText}>Nenhum professor ativo</Text>
               </View>
             ) : (
               <FlatList
-                data={teachers.filter(t => t.active)}
+                data={getVisibleTeachers().filter(t => t.active)}
                 keyExtractor={(i) => String(i.id)}
                 renderItem={renderTeacher}
                 scrollEnabled={false}
@@ -317,13 +354,13 @@ export default function ManageTeachersScreen() {
           </View>
 
           {/* Professores inativos */}
-          {teachers.filter(t => !t.active).length > 0 && (
+          {getVisibleTeachers().filter(t => !t.active).length > 0 && (
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>
-                Inativos ({teachers.filter(t => !t.active).length})
+                Inativos ({getVisibleTeachers().filter(t => !t.active).length})
               </Text>
               <FlatList
-                data={teachers.filter(t => !t.active)}
+                data={getVisibleTeachers().filter(t => !t.active)}
                 keyExtractor={(i) => String(i.id)}
                 renderItem={renderTeacher}
                 scrollEnabled={false}
@@ -332,28 +369,30 @@ export default function ManageTeachersScreen() {
           )}
 
           {/* Convites pendentes */}
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              Convites Pendentes ({invites.filter(i => i.status === 'PENDING').length})
-            </Text>
-            {isLoading ? (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color="#8B5CF6" />
-              </View>
-            ) : invites.length === 0 ? (
-              <View style={styles.emptyState}>
-                <Mail size={48} color="#D1D5DB" />
-                <Text style={styles.emptyStateText}>Nenhum convite pendente</Text>
-              </View>
-            ) : (
-              <FlatList
-                data={invites}
-                keyExtractor={(i) => i.id}
-                renderItem={renderInvite}
-                scrollEnabled={false}
-              />
-            )}
-          </View>
+          {isCurrentUserManager() && (
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>
+                Convites Pendentes ({invites.filter(i => i.status === 'PENDING').length})
+              </Text>
+              {isLoading ? (
+                <View style={styles.loadingContainer}>
+                  <ActivityIndicator size="small" color="#8B5CF6" />
+                </View>
+              ) : invites.length === 0 ? (
+                <View style={styles.emptyState}>
+                  <Mail size={48} color="#D1D5DB" />
+                  <Text style={styles.emptyStateText}>Nenhum convite pendente</Text>
+                </View>
+              ) : (
+                <FlatList
+                  data={invites}
+                  keyExtractor={(i) => i.id}
+                  renderItem={renderInvite}
+                  scrollEnabled={false}
+                />
+              )}
+            </View>
+          )}
         </View>
       </ScrollView>
 

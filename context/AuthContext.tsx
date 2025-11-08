@@ -23,7 +23,8 @@ interface SchoolContextDTO {
 // O 'role' aqui é o UserRole global (SUPER_ADMIN ou USER)
 interface UserDTO {
   id: string;
-  login: string;
+  name: string;
+  lastName?: string;
   email: string;
   role: 'SUPER_ADMIN' | 'USER';
 }
@@ -32,7 +33,8 @@ interface UserDTO {
 interface AuthContextData {
   user: UserDTO | null;
   schools: SchoolContextDTO[];
-  signIn: (login: string, password: string) => Promise<void>;
+  // signIn now expects email + password (backend authenticates by email)
+  signIn: (email: string, password: string) => Promise<void>;
   signOut: () => void;
   refreshUser: () => Promise<void>;
   isLoading: boolean;
@@ -50,6 +52,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [schools, setSchools] = useState<SchoolContextDTO[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isLoadingSchools, setIsLoadingSchools] = useState(false);
+  const [didInitialRedirect, setDidInitialRedirect] = useState(false);
 
   const router = useRouter();
   const segments = useSegments();
@@ -62,6 +65,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         // Sem token, garante estado limpo
         setUser(null);
         setSchools([]);
+        setDidInitialRedirect(false);
         return;
       }
 
@@ -113,7 +117,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           const schoolsResponse = await api.get<SchoolContextDTO[]>('/schools/me');
           setSchools(schoolsResponse.data);
         } catch (schoolError: any) {
-          console.error('Erro ao carregar escolas:', schoolError);
+          console.log('Erro ao carregar escolas:', schoolError);
           // If we got 403/401 even after refresh attempt above, clear state and tokens
           const status = schoolError?.response?.status;
           if (status === 401 || status === 403) {
@@ -134,11 +138,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         setSchools([]);
       }
     } catch (e: any) {
-      console.error('Falha ao carregar usuário:', e);
+      console.log('Falha ao carregar usuário:', e);
       // IMPORTANTE: Limpar todo o estado em caso de erro
       setUser(null);
       setSchools([]);
       setIsLoadingSchools(false);
+      setDidInitialRedirect(false);
       await removeToken();
     }
   };
@@ -171,8 +176,9 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     } else {
       // Usuário autenticado - se estiver em '/login', redireciona para dashboard
-      if (segs.length === 0 || segs[0] !== '(app)') {
-         redirectToDashboard();
+      if (!didInitialRedirect && (segs.length === 0 || segs[0] !== '(app)')) {
+        redirectToDashboard();
+        setDidInitialRedirect(true);
       }
     }
   }, [user, isLoading, segments]);
@@ -180,28 +186,34 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const redirectToDashboard = () => {
     if (!user) return;
     if (user.role === 'SUPER_ADMIN') {
-      router.replace('/(superadmin)/dashboard' as any);
+      // avoid replacing if already on the same page
+      const alreadyOn = (segments as unknown as string[]).includes('dashboard') || (segments as unknown as string[]).includes('(superadmin)');
+      if (!alreadyOn) router.replace('/(superadmin)/dashboard' as any);
     } else {
-      // Sempre vai para school-selection, mesmo sem escolas
-      // A tela de school-selection já mostra a mensagem quando não há escolas
-      if (schools.length > 1) {
-        router.replace('/(app)/school-selection' as any);
-      } else if (schools.length === 1) {
-        router.replace(`/(app)/class-selection?schoolId=${schools[0].schoolId}` as any);
-      } else {
-        // Sem escolas, vai para school-selection que mostrará o estado vazio
-        router.replace('/(app)/school-selection' as any);
+      // Determine target
+      let target = '/(app)/school-selection';
+      if (schools.length === 1) {
+        target = `/(app)/class-selection?schoolId=${schools[0].schoolId}`;
+      }
+      // If we're already on the intended route, don't replace to avoid navigation loops
+      const segs = segments as unknown as string[];
+      const alreadyOnTarget = (segs && segs.length > 0 && (
+        (target.includes('school-selection') && segs.includes('school-selection')) ||
+        (target.includes('class-selection') && segs.includes('class-selection'))
+      ));
+      if (!alreadyOnTarget) {
+        router.replace(target as any);
       }
     }
   };
 
-  const signIn = async (login: string, password: string) => {
+  const signIn = async (email: string, password: string) => {
     try {
       console.log('🚀 Iniciando login...');
       console.log('📍 API Base URL:', api.defaults.baseURL);
-      console.log('👤 Login:', login);
+      console.log('👤 Email:', email);
       
-      const response = await api.post<{ token: string; refreshToken: string }>('/auth/login', { login, password });
+      const response = await api.post<{ token: string; refreshToken: string }>('/auth/login', { email, password });
       console.log('✅ Resposta recebida:', response.status);
       console.log('🔑 Token recebido:', response.data.token ? 'SIM' : 'NÃO');
       console.log('🔄 Refresh Token recebido:', response.data.refreshToken ? 'SIM' : 'NÃO');
@@ -267,16 +279,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       console.log('❌ Resposta:', e?.response?.data);
       console.log('❌ Status:', e?.response?.status);
       console.log('❌ Headers:', e?.response?.headers);
-      
-      const serverMessage = e?.response?.data?.message || e?.response?.data || null;
-      const errMessage = typeof serverMessage === 'string' ? serverMessage : (e?.message || 'Erro ao fazer login');
-      throw new Error(errMessage);
+
+      // Preserve the original axios error so callers (UI) can inspect response/status
+      // and show appropriate user-facing messages. Previously we wrapped the error
+      // losing response metadata which prevented granular error handling on the UI.
+      throw e;
     }
   };
 
   const signOut = async () => {
     setUser(null);
     setSchools([]);
+    setDidInitialRedirect(false);
     await removeToken();
     await AsyncStorage.removeItem('@refresh_token');
     router.replace('/');

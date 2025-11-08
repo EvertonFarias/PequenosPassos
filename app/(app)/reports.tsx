@@ -100,7 +100,7 @@ export default function ReportsScreen() {
         const response = await api.get<MetricDefinition[]>(`/schools/${parsedSchoolId}/metrics?activeOnly=true`);
         setMetrics(response.data || []);
       } catch (error) {
-        console.error('Erro ao carregar métricas:', error);
+        console.log('Erro ao carregar métricas:', error);
       }
     };
 
@@ -122,7 +122,7 @@ export default function ReportsScreen() {
           }
         }
       } catch (error) {
-        console.error('Erro ao carregar turmas:', error);
+        console.log('Erro ao carregar turmas:', error);
       }
     };
 
@@ -138,7 +138,7 @@ export default function ReportsScreen() {
           const response = await api.get<Student[]>(`/classrooms/${selectedClassroom.id}/students`);
           setStudents(response.data || []);
         } catch (error) {
-          console.error('Erro ao carregar alunos da turma:', error);
+          console.log('Erro ao carregar alunos da turma:', error);
         }
       };
       fetchStudents();
@@ -259,7 +259,7 @@ export default function ReportsScreen() {
       });
 
     } catch (error: any) {
-      console.error('Erro ao gerar relatório:', error);
+      console.log('Erro ao gerar relatório:', error);
       toast.showToast(
         error.response?.data?.message || 'Erro ao gerar relatório',
         'error'

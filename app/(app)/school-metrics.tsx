@@ -78,7 +78,7 @@ export default function SchoolMetricsScreen() {
       const response = await api.get<MetricDefinition[]>(`/schools/${parsedSchoolId}/metrics?activeOnly=false`);
       setMetrics(response.data ?? []);
     } catch (e: any) {
-      console.error('Falha ao carregar métricas:', e);
+      console.log('Falha ao carregar métricas:', e);
       setError('Falha ao carregar métricas.');
     } finally {
       setIsLoading(false);
@@ -137,7 +137,7 @@ export default function SchoolMetricsScreen() {
       closeModal();
       fetchMetrics();
     } catch (e: any) {
-      console.error('Erro ao salvar métrica:', e);
+      console.log('Erro ao salvar métrica:', e);
       const errorMessage = e.response?.data?.message || 'Falha ao salvar métrica';
       toast.showToast(errorMessage, 'error');
     } finally {
@@ -164,7 +164,7 @@ export default function SchoolMetricsScreen() {
               toast.showToast(`Métrica ${actionPast} com sucesso!`, 'success');
               fetchMetrics();
             } catch (e: any) {
-              console.error(`Erro ao ${action} métrica:`, e);
+              console.log(`Erro ao ${action} métrica:`, e);
               const errorMessage = e.response?.data?.message || `Falha ao ${action} métrica`;
               toast.showToast(errorMessage, 'error');
             }
@@ -203,7 +203,7 @@ export default function SchoolMetricsScreen() {
                 toast.showToast('Métrica deletada com sucesso!', 'success');
                 fetchMetrics();
               } catch (e: any) {
-                console.error('Erro ao deletar métrica:', e);
+                console.log('Erro ao deletar métrica:', e);
                 const errorMessage = e.response?.data?.message || 'Falha ao deletar métrica';
                 toast.showToast(errorMessage, 'error');
               }
@@ -212,7 +212,7 @@ export default function SchoolMetricsScreen() {
         ]
       );
     } catch (e: any) {
-      console.error('Erro ao verificar se pode deletar:', e);
+      console.log('Erro ao verificar se pode deletar:', e);
       toast.showToast('Erro ao verificar se métrica pode ser deletada', 'error');
     }
   };

@@ -3,7 +3,7 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, StatusBar } from 'react-native';
 import { useAuth } from '../context/AuthContext';
 import { ArrowLeft, LogOut } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useSegments } from 'expo-router';
 import Constants from 'expo-constants'; // <-- 1. IMPORTAR CONSTANTS
 
 interface AppHeaderProps {
@@ -14,6 +14,7 @@ interface AppHeaderProps {
 export function AppHeader({ title, showBack = false }: AppHeaderProps) {
   const { signOut, user } = useAuth();
   const router = useRouter();
+  const segments = useSegments() as unknown as string[];
 
   const handleLogout = () => {
     signOut();
@@ -22,12 +23,25 @@ export function AppHeader({ title, showBack = false }: AppHeaderProps) {
   const handleBack = () => {
     if (router.canGoBack()) {
       router.back();
+      return;
     }
+
+    // If we can't go back but user is SUPER_ADMIN, send them to the superadmin dashboard
+    if (user?.role === 'SUPER_ADMIN') {
+      router.replace('/(app)/(superadmin)/dashboard' as any);
+      return;
+    }
+
+    // Fallback: try to go to school selection in the app group
+    router.replace('/(app)/school-selection' as any);
   };
 
   const getInitials = () => {
-    if (user?.login) {
-      return user.login.substring(0, 2).toUpperCase();
+    // Compose initials from name + lastName if available
+    if (user?.name) {
+      const parts = `${user.name} ${user.lastName || ''}`.trim().split(' ');
+      if (parts.length === 1) return parts[0].substring(0, 2).toUpperCase();
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     }
     return 'SA';
   };
@@ -42,7 +56,11 @@ export function AppHeader({ title, showBack = false }: AppHeaderProps) {
       {/* Esta é a barra de conteúdo do header */}
       <View style={styles.header}>
         <View style={styles.leftContainer}>
-          {showBack && (
+          {(
+            /* Show back when explicitly requested, when router.canGoBack(),
+               or for SUPER_ADMIN users who are not on the dashboard */
+            showBack || router.canGoBack() || (user?.role === 'SUPER_ADMIN' && !((segments || []).includes('dashboard') || (segments || []).includes('(superadmin)')))
+          ) && (
             <TouchableOpacity onPress={handleBack} style={styles.iconButton}>
               <ArrowLeft size={24} color="#4B5563" />
             </TouchableOpacity>

@@ -70,7 +70,7 @@ export default function NewClassroomScreen() {
         ]
       );
     } catch (error: any) {
-      console.error('Erro ao criar turma:', error);
+      console.log('Erro ao criar turma:', error);
       
       let errorMessage = 'Não foi possível criar a turma. Tente novamente.';
       

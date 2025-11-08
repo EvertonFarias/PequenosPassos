@@ -90,7 +90,7 @@ export default function StudentEvaluationScreen() {
           setMetrics(metricsResponse.data ?? []);
         }
       } catch (e: any) {
-        console.error('Falha ao carregar dados:', e);
+        console.log('Falha ao carregar dados:', e);
         setError(isEditMode ? 'Falha ao carregar avaliação.' : 'Falha ao carregar métricas da turma.');
       } finally {
         setIsLoading(false);
@@ -162,7 +162,7 @@ export default function StudentEvaluationScreen() {
         router.back();
       }, 1000);
     } catch (e: any) {
-      console.error('Erro ao salvar avaliação:', e);
+      console.log('Erro ao salvar avaliação:', e);
       const errorMessage = e.response?.data?.message || 'Falha ao salvar avaliação. Tente novamente.';
       Alert.alert('Erro', errorMessage, [{ text: 'OK' }]);
     } finally {

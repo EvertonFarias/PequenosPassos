@@ -170,7 +170,7 @@ export default function NewStudentScreen() {
         ]
       );
     } catch (error: any) {
-      console.error('Erro ao cadastrar aluno:', error);
+      console.log('Erro ao cadastrar aluno:', error);
       const message = error.response?.data?.message || 'Erro ao cadastrar aluno. Tente novamente.';
       Alert.alert('Erro', message);
     } finally {

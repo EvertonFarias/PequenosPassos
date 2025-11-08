@@ -140,7 +140,7 @@ export default function EditStudentModal({ visible, student, onClose, onSuccess 
         { text: 'OK', onPress: onSuccess },
       ]);
     } catch (error: any) {
-      console.error('Erro ao editar aluno:', error);
+      console.log('Erro ao editar aluno:', error);
       const message = error.response?.data?.message || 'Erro ao editar aluno. Tente novamente.';
       Alert.alert('Erro', message);
     } finally {

@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import { ArrowRight, Building2, GraduationCap, MapPin, Phone, RefreshCw } from 'lucide-react-native';
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
     ActivityIndicator,
     FlatList,
@@ -17,10 +17,14 @@ import { AppHeader } from '@/components/AppHeader';
 export default function SchoolSelectionScreen() {
   const { schools, user, isLoadingSchools, refreshUser } = useAuth();
   const router = useRouter();
+  const triedRefreshRef = useRef(false);
 
   useEffect(() => {
-    if (!isLoadingSchools && schools.length === 0 && user?.role === 'USER') {
+    // Only attempt a single automatic refresh when schools are empty to avoid an infinite loop
+    const triedRefresh = triedRefreshRef.current;
+    if (!isLoadingSchools && schools.length === 0 && user?.role === 'USER' && !triedRefresh) {
       console.log('🔄 Schools vazias, recarregando dados do usuário...');
+      triedRefreshRef.current = true;
       refreshUser();
     }
   }, [schools.length, isLoadingSchools, user?.role]);

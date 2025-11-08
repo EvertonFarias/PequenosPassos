@@ -55,7 +55,7 @@ export default function EditClassroomScreen() {
       setName(data.name || '');
       setDescription(data.description || '');
     } catch (error: any) {
-      console.error('Erro ao carregar turma:', error);
+      console.log('Erro ao carregar turma:', error);
       Alert.alert('Erro', 'Não foi possível carregar os dados da turma.');
       router.back();
     } finally {
@@ -106,7 +106,7 @@ export default function EditClassroomScreen() {
         ]
       );
     } catch (error: any) {
-      console.error('Erro ao atualizar turma:', error);
+      console.log('Erro ao atualizar turma:', error);
       
       let errorMessage = 'Não foi possível atualizar a turma. Tente novamente.';
       

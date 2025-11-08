@@ -91,7 +91,7 @@ export default function SuperAdminDashboard() {
         throw new Error('Formato de dados inesperado.');
       }
     } catch (e: any) {
-      console.error('Falha ao buscar escolas:', e);
+      console.log('Falha ao buscar escolas:', e);
       showError('Não foi possível carregar as escolas.');
     } finally {
       setIsLoading(false);
@@ -133,7 +133,15 @@ export default function SuperAdminDashboard() {
   }, [searchTerm, schools]);
 
   const onSelectSchool = (school: SchoolDTO) => {
-    console.log('Selecionou escola:', school.name);
+    // Navigate into the selected school (same behavior as SchoolSelection screen)
+    // Pass schoolId and schoolName so the ClassSelection screen can load context
+    router.push({
+      pathname: '/(app)/class-selection',
+      params: {
+        schoolId: String(school.id),
+        schoolName: String(school.name),
+      },
+    } as any);
   };
 
   const openEditModal = async (school: SchoolDTO) => {
@@ -218,7 +226,7 @@ export default function SuperAdminDashboard() {
       const status = err?.response?.status;
       const respData = err?.response?.data;
       
-      console.error('Falha ao atualizar escola:', {
+      console.log('Falha ao atualizar escola:', {
         schoolId: editingSchool.id,
         selectedManagers: selectedManagerIds,
         status,

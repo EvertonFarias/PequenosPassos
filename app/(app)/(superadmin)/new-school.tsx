@@ -90,7 +90,7 @@ export default function NewSchoolScreen() {
 
     } catch (err) {
       const e: any = err;
-      console.error('Falha ao criar escola:', e?.response?.data ?? e);
+      console.log('Falha ao criar escola:', e?.response?.data ?? e);
       const resp = e?.response?.data;
       if (resp?.message) {
         showError(String(resp.message));

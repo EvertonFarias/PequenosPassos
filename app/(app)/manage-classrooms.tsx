@@ -70,7 +70,7 @@ export default function ManageClassroomsScreen() {
       const response = await api.get<ClassroomDTO[]>(`/schools/${parsedSchoolId}/classrooms`);
       setClasses(response.data ?? []);
     } catch (e: any) {
-      console.error('Falha ao carregar as turmas:', e);
+      console.log('Falha ao carregar as turmas:', e);
       setError('Falha ao carregar as turmas.');
     } finally {
       setIsLoading(false);
@@ -142,7 +142,7 @@ export default function ManageClassroomsScreen() {
                 `Turma ${classItem.active !== false ? 'desativada' : 'reativada'} com sucesso.`
               );
             } catch (error: any) {
-              console.error(`Erro ao ${actionPt} turma:`, error);
+              console.log(`Erro ao ${actionPt} turma:`, error);
               Alert.alert('Erro', `Não foi possível ${actionPt} a turma.`);
             } finally {
               setIsProcessing(false);

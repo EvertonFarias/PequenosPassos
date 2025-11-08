@@ -697,7 +697,7 @@ export default function ReportViewScreen() {
       });
       
     } catch (error) {
-      console.error('Erro ao gerar PDF:', error);
+      console.log('Erro ao gerar PDF:', error);
       Alert.alert('Erro', 'Não foi possível gerar o PDF do relatório.');
     }
   };
