@@ -223,48 +223,53 @@ export default function SchoolMetricsScreen() {
         {/* Título com badge INATIVA na mesma linha */}
         <View style={styles.metricTitleRow}>
           <Text style={styles.metricLabel}>{item.label}</Text>
-          {!item.active && (
-            <View style={styles.inactiveBadge}>
-              <Text style={styles.inactiveBadgeText}>Inativa</Text>
+
+          {/* Right side: inactive badge + action buttons */}
+          <View style={styles.rightActionsRow}>
+            {!item.active && (
+              <View style={styles.inactiveBadge}>
+                <Text style={styles.inactiveBadgeText}>Inativa</Text>
+              </View>
+            )}
+
+            <View style={styles.metricActions}>
+              {/* Botão Editar - só para métricas ativas */}
+              {item.active && (
+                <TouchableOpacity
+                  style={[styles.iconButton, styles.editButton]}
+                  onPress={() => openEditModal(item)}
+                >
+                  <Edit2 size={18} color="#2563EB" />
+                </TouchableOpacity>
+              )}
+
+              {/* Botão Desativar/Reativar */}
+              <TouchableOpacity
+                style={[
+                  styles.iconButton,
+                  item.active ? styles.deactivateButton : styles.reactivateButton,
+                ]}
+                onPress={() => handleDeactivate(item)}
+              >
+                {item.active ? (
+                  <X size={18} color="#D97706" />
+                ) : (
+                  <Check size={18} color="#059669" />
+                )}
+              </TouchableOpacity>
+
+              {/* Botão Deletar */}
+              <TouchableOpacity
+                style={[styles.iconButton, styles.deleteButton]}
+                onPress={() => handleDelete(item)}
+              >
+                <Trash2 size={18} color="#DC2626" />
+              </TouchableOpacity>
             </View>
-          )}
+          </View>
         </View>
       </View>
-
-      <View style={styles.metricActions}>
-        {/* Botão Editar - só para métricas ativas */}
-        {item.active && (
-          <TouchableOpacity
-            style={[styles.iconButton, styles.editButton]}
-            onPress={() => openEditModal(item)}
-          >
-            <Edit2 size={18} color="#2563EB" />
-          </TouchableOpacity>
-        )}
-        
-        {/* Botão Desativar/Reativar */}
-        <TouchableOpacity
-          style={[
-            styles.iconButton,
-            item.active ? styles.deactivateButton : styles.reactivateButton
-          ]}
-          onPress={() => handleDeactivate(item)}
-        >
-          {item.active ? (
-            <X size={18} color="#D97706" />
-          ) : (
-            <Check size={18} color="#059669" />
-          )}
-        </TouchableOpacity>
-        
-        {/* Botão Deletar */}
-        <TouchableOpacity
-          style={[styles.iconButton, styles.deleteButton]}
-          onPress={() => handleDelete(item)}
-        >
-          <Trash2 size={18} color="#DC2626" />
-        </TouchableOpacity>
-      </View>
+      
     </View>
   );
 
@@ -530,6 +535,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: 8,
   },
+  rightActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
   iconButton: {
     width: 36,
     height: 36,
@@ -573,14 +583,15 @@ const styles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
   },
   modalContent: {
     backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderRadius: 16,
     padding: 24,
-    maxHeight: '80%',
+    maxHeight: '70%',
+    width: '100%',
   },
   modalHeader: {
     flexDirection: 'row',
